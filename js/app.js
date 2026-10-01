@@ -1,6 +1,6 @@
 /* Arranque, navegación y lógica compartida (rutas, geocodificación en cola). */
 const APP = {
-  VERSION: '1.1.0',
+  VERSION: '1.3.1',
   state: { name: 'hoy', params: {} },
   TABS: [['hoy', 'Hoy', I.home], ['clientes', 'Clientes', I.users], ['mapa', 'Mapa', I.map], ['rutas', 'Rutas', I.route], ['pedidos', 'Pedidos', I.box]],
   ajustes: {},
@@ -10,7 +10,7 @@ const APP = {
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) { }
     await APP.cargarAjustes();
     window.addEventListener('popstate', () => {
-      if (UI._ignorePop) { UI._ignorePop = false; return; }
+      if (UI._ignorePop) { UI._ignorePop = false; const r = UI._popResolve; UI._popResolve = null; if (r) r(); return; }
       if (UI._sheet) { UI._sheet.el.remove(); const s = UI._sheet; UI._sheet = null; if (s.onClose) s.onClose(); if (APP._dirty) { APP._dirty = false; APP.render(); } return; }
       const st = history.state && history.state.name ? history.state : { name: 'hoy', params: {} };
       APP.state = st; APP.render();
@@ -196,6 +196,24 @@ const APP = {
     }
     APP.geo.activo = false; DB.changed('clientes');
     return APP.geo;
+  },
+
+  /* Elimina los clientes de prueba (y sus visitas, pedidos y paradas de ruta) en bloque */
+  async eliminarDemo() {
+    const cs = (await db.clientes.toArray()).filter(c => c.demo && !c.deleted);
+    const ids = new Set(cs.map(c => c.id));
+    const vs = (await db.visitas.toArray()).filter(v => ids.has(v.clienteId) && !v.deleted);
+    const ps = (await db.pedidos.toArray()).filter(p => ids.has(p.clienteId) && !p.deleted);
+    const rs = (await db.rutas.toArray()).filter(r => !r.deleted && (r.paradas || []).some(p => ids.has(p.clienteId)));
+    for (const x of [...cs, ...vs, ...ps]) x.deleted = true;
+    for (const r of rs) { r.paradas = r.paradas.filter(p => !ids.has(p.clienteId)); if (!r.paradas.length) r.deleted = true; }
+    if (cs.length) await DB.bulkSave('clientes', cs);
+    if (vs.length) await DB.bulkSave('visitas', vs);
+    if (ps.length) await DB.bulkSave('pedidos', ps);
+    if (rs.length) await DB.bulkSave('rutas', rs);
+    await DB.set('demoCargada', false);
+    DB.changed('all');
+    return cs.length;
   },
 
   /* ---------- datos de prueba ---------- */

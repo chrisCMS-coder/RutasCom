@@ -93,8 +93,8 @@ function sheetHora(valor) {
   return new Promise(res => {
     const s = UI.sheet(`<div class="grip"></div><h2>Hora fija</h2><div class="muted small">Solo si el cliente te espera a una hora concreta. La ruta se organiza alrededor.</div><div class="row"><label for="hx" class="muted bold">A las</label>${UI.horaInput('hx', valor || '10:00')}</div>
       <div class="btn-row"><button class="btn" data-a="q">Sin hora fija</button><button class="btn primary" data-a="ok">Guardar</button></div>`, { onClose: () => res(undefined) });
-    s.querySelector('[data-a=ok]').onclick = () => { const v = s.querySelector('#hx').value || null; UI._sheet.onClose = null; UI.closeSheet(); res(v); };
-    s.querySelector('[data-a=q]').onclick = () => { UI._sheet.onClose = null; UI.closeSheet(); res(null); };
+    s.querySelector('[data-a=ok]').onclick = async () => { const v = s.querySelector('#hx').value || null; UI._sheet.onClose = null; await UI.closeSheet(); res(v); };
+    s.querySelector('[data-a=q]').onclick = async () => { UI._sheet.onClose = null; await UI.closeSheet(); res(null); };
   });
 }
 
@@ -303,7 +303,7 @@ SCREENS.ajustes = async () => {
   el.querySelector('[data-pin]').onclick = () => sheetPin();
   el.querySelector('[data-pin-off]')?.addEventListener('click', () => sheetPin({ quitar: true }));
   el.querySelector('[data-demo]')?.addEventListener('click', async e => { e.target.disabled = true; const n = await APP.cargarDemo(); UI.toast(`${n} clientes de prueba cargados`); });
-  el.querySelector('[data-borrardemo]')?.addEventListener('click', async () => { if (await UI.confirm('¿Eliminar los clientes de prueba?', 'Se eliminan los clientes marcados como demo, con sus visitas y pedidos.', { ok: 'Eliminar', danger: true })) { const ids = clientes.filter(c => c.demo).map(c => c.id); for (const id of ids) await DB.softDelete('clientes', id); const vs = (await db.visitas.toArray()).filter(v => ids.includes(v.clienteId)); for (const v of vs) await DB.softDelete('visitas', v.id); const ps = (await db.pedidos.toArray()).filter(p => ids.includes(p.clienteId)); for (const p of ps) await DB.softDelete('pedidos', p.id); await DB.set('demoCargada', false); UI.toast('Datos de prueba eliminados'); } });
+  el.querySelector('[data-borrardemo]')?.addEventListener('click', async e => { const b = e.currentTarget; if (await UI.confirm('¿Eliminar los clientes de prueba?', 'Se eliminan los clientes marcados como demo, con sus visitas, pedidos y paradas de ruta.', { ok: 'Eliminar', danger: true })) { b.disabled = true; b.textContent = 'Eliminando…'; const n = await APP.eliminarDemo(); UI.toast(`${n} clientes de prueba eliminados`); APP.render(); } });
   el.querySelector('[data-wipe]').onclick = async () => { if (await UI.confirm('¿Borrar TODO?', 'Clientes, visitas, pedidos, rutas y catálogo de este móvil. Haz una copia antes.', { ok: 'Borrar todo', danger: true })) { await DB.wipe(); await DB.set('demoCargada', false); UI.toast('Datos borrados'); APP.go('hoy', {}, true); } };
   el.querySelector('[data-install]')?.addEventListener('click', async () => { APP.installPrompt.prompt(); APP.installPrompt = null; });
   return el;
@@ -319,13 +319,13 @@ function sheetPin({ quitar = false } = {}) {
     box.replaceChildren(UI.pinPad({ titulo: titulos[paso], sub: paso === 'nuevo' ? 'De 4 a 6 cifras' : '', onEnter: async pin => {
       if (paso === 'actual') {
         if (!(await APP.checkPin(pin))) return 'PIN incorrecto';
-        if (quitar) { await APP.clearPin(); UI.closeSheet(); UI.toast('PIN desactivado'); APP.render(); return true; }
+        if (quitar) { await APP.clearPin(); await UI.closeSheet(); UI.toast('PIN desactivado'); APP.render(); return true; }
         paso = 'nuevo'; pintar(); return true;
       }
       if (paso === 'nuevo') { if (pin.length < 4) return 'Mínimo 4 cifras'; nuevo = pin; paso = 'confirmar'; pintar(); return true; }
       if (pin !== nuevo) { paso = 'nuevo'; pintar(); return 'No coinciden, vuelve a empezar'; }
       await APP.setPin(pin); APP.pin.len = pin.length; await DB.set('pin', APP.pin);
-      UI.closeSheet(); UI.toast('PIN activado'); APP.render(); return true;
+      await UI.closeSheet(); UI.toast('PIN activado'); APP.render(); return true;
     } }));
   };
   pintar();
@@ -344,11 +344,11 @@ async function sheetSync() {
     <details><summary class="muted small bold">SQL para crear la tabla (una sola vez)</summary><pre style="white-space:pre-wrap;font-size:11px;background:var(--bg2);padding:10px;border-radius:10px">${U.esc(SYNC.SQL)}</pre><button class="btn sm outline" data-a="copysql">Copiar SQL</button></details>`}`);
   const g = i => s.querySelector('#' + i)?.value.trim();
   const conf = async () => { if (!g('su') || !g('sk')) throw new Error('Falta la URL o la clave'); await SYNC.configurar(g('su'), g('sk')); };
-  s.querySelector('[data-a=in]')?.addEventListener('click', async e => { e.target.disabled = true; try { await conf(); await SYNC.login(g('se'), g('sp')); UI.closeSheet(); UI.toast('Copia en línea activada'); APP.render(); } catch (err) { UI.toast(err.message); e.target.disabled = false; } });
-  s.querySelector('[data-a=reg]')?.addEventListener('click', async e => { e.target.disabled = true; try { await conf(); const r = await SYNC.registro(g('se'), g('sp')); UI.closeSheet(); UI.toast(r === 'confirmar' ? 'Revisa tu correo para confirmar la cuenta y luego inicia sesión' : 'Cuenta creada y copia activada', 5000); APP.render(); } catch (err) { UI.toast(err.message); e.target.disabled = false; } });
-  s.querySelector('[data-a=now]')?.addEventListener('click', async e => { e.target.disabled = true; await SYNC.ahora(); UI.closeSheet(); UI.toast(SYNC.error ? SYNC.error : 'Sincronizado'); APP.render(); });
-  s.querySelector('[data-a=out]')?.addEventListener('click', async () => { await SYNC.logout(); UI.closeSheet(); await APP.login(); APP.render(); });
-  s.querySelector('[data-a=off]')?.addEventListener('click', async () => { await SYNC.desactivar(); UI.closeSheet(); APP.render(); });
+  s.querySelector('[data-a=in]')?.addEventListener('click', async e => { e.target.disabled = true; try { await conf(); await SYNC.login(g('se'), g('sp')); await UI.closeSheet(); UI.toast('Copia en línea activada'); APP.render(); } catch (err) { UI.toast(err.message); e.target.disabled = false; } });
+  s.querySelector('[data-a=reg]')?.addEventListener('click', async e => { e.target.disabled = true; try { await conf(); const r = await SYNC.registro(g('se'), g('sp')); await UI.closeSheet(); UI.toast(r === 'confirmar' ? 'Revisa tu correo para confirmar la cuenta y luego inicia sesión' : 'Cuenta creada y copia activada', 5000); APP.render(); } catch (err) { UI.toast(err.message); e.target.disabled = false; } });
+  s.querySelector('[data-a=now]')?.addEventListener('click', async e => { e.target.disabled = true; await SYNC.ahora(); await UI.closeSheet(); UI.toast(SYNC.error ? SYNC.error : 'Sincronizado'); APP.render(); });
+  s.querySelector('[data-a=out]')?.addEventListener('click', async () => { await SYNC.logout(); await UI.closeSheet(); await APP.login(); APP.render(); });
+  s.querySelector('[data-a=off]')?.addEventListener('click', async () => { await SYNC.desactivar(); await UI.closeSheet(); APP.render(); });
   s.querySelector('[data-a=copysql]')?.addEventListener('click', async () => { try { await navigator.clipboard.writeText(SYNC.SQL); UI.toast('SQL copiado'); } catch (e) { UI.toast('No se pudo copiar'); } });
 }
 

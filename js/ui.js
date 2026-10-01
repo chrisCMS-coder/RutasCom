@@ -46,20 +46,28 @@ const UI = {
     history.pushState({ sheet: true }, '');
     return back.querySelector('.sheet');
   },
+  /* Cierra la hoja. Devuelve una promesa que se resuelve cuando el historial ya está consistente
+     (history.back() es asíncrono): quien navegue después debe esperar a esta promesa. */
   closeSheet(silent) {
-    const s = UI._sheet; if (!s) return;
+    const s = UI._sheet; if (!s) return Promise.resolve();
     UI._sheet = null; s.el.remove();
     if (s.onClose) s.onClose();
-    // al cerrar por código retiramos la entrada del historial sin que eso repinte la pantalla
-    if (!silent && history.state && history.state.sheet) { UI._ignorePop = true; history.back(); }
+    let p = Promise.resolve();
+    if (!silent && history.state && history.state.sheet) {
+      p = new Promise(res => {
+        UI._popResolve = res; UI._ignorePop = true; history.back();
+        setTimeout(() => { if (UI._popResolve === res) { UI._popResolve = null; UI._ignorePop = false; res(); } }, 500);
+      });
+    }
     if (APP._dirty) { APP._dirty = false; APP.render(); }
+    return p;
   },
   /* Confirmación en hoja (la app no puede usar confirm()) */
   confirm(titulo, texto, { ok = 'Aceptar', cancel = 'Cancelar', danger = false } = {}) {
     return new Promise(res => {
       const s = UI.sheet(`<div class="grip"></div><h2>${U.esc(titulo)}</h2>${texto ? `<p class="muted" style="margin:0">${texto}</p>` : ''}
         <div class="btn-row"><button class="btn" data-a="c">${U.esc(cancel)}</button><button class="btn ${danger ? 'danger' : 'primary'}" data-a="ok">${U.esc(ok)}</button></div>`, { onClose: () => res(false) });
-      s.querySelector('[data-a=ok]').onclick = () => { UI._sheet.onClose = null; UI.closeSheet(); res(true); };
+      s.querySelector('[data-a=ok]').onclick = async e => { e.currentTarget.disabled = true; UI._sheet.onClose = null; await UI.closeSheet(); res(true); };
       s.querySelector('[data-a=c]').onclick = () => UI.closeSheet();
     });
   },
@@ -69,7 +77,7 @@ const UI = {
         <div class="field">${multiline ? `<textarea id="pv" placeholder="${U.esc(placeholder)}">${U.esc(valor)}</textarea>` : `<input id="pv" value="${U.esc(valor)}" placeholder="${U.esc(placeholder)}">`}</div>
         <div class="btn-row"><button class="btn" data-a="c">Cancelar</button><button class="btn primary" data-a="ok">${U.esc(ok)}</button></div>`, { onClose: () => res(null) });
       const inp = s.querySelector('#pv'); setTimeout(() => inp.focus(), 50);
-      s.querySelector('[data-a=ok]').onclick = () => { const v = inp.value; UI._sheet.onClose = null; UI.closeSheet(); res(v); };
+      s.querySelector('[data-a=ok]').onclick = async () => { const v = inp.value; UI._sheet.onClose = null; await UI.closeSheet(); res(v); };
       s.querySelector('[data-a=c]').onclick = () => UI.closeSheet();
     });
   },

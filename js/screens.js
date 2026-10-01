@@ -159,7 +159,7 @@ function promptNota(titulo, valor) {
     const s = UI.sheet(`<div class="grip"></div><h2>${U.esc(titulo)}</h2><div class="field"><div class="row"><textarea id="nv" class="grow" placeholder="Escribe o dicta…">${U.esc(valor)}</textarea>${UI.micBtn('nv')}</div></div>
       <div class="btn-row"><button class="btn" data-a="c">Cancelar</button><button class="btn primary" data-a="ok">Guardar</button></div>`, { onClose: () => res(null) });
     UI.wireMics(s);
-    s.querySelector('[data-a=ok]').onclick = () => { const v = s.querySelector('#nv').value.trim(); UI._sheet.onClose = null; UI.closeSheet(); res(v); };
+    s.querySelector('[data-a=ok]').onclick = async () => { const v = s.querySelector('#nv').value.trim(); UI._sheet.onClose = null; await UI.closeSheet(); res(v); };
     s.querySelector('[data-a=c]').onclick = () => UI.closeSheet();
   });
 }
@@ -180,7 +180,7 @@ async function sheetVisita(clienteId, { rutaId = null } = {}) {
   s.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { resultado = b.dataset.r; s.querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', x === b)); ok.disabled = false; ok.textContent = resultado === 'pedido' ? 'Continuar con el pedido' : 'Guardar visita'; });
   ok.onclick = async () => {
     const nota = s.querySelector('#vn').value.trim();
-    if (resultado === 'pedido') { UI.closeSheet(); APP.go('pedido', { id: 'nuevo-' + c.id, nota, rutaId }); return; }
+    if (resultado === 'pedido') { APP.go('pedido', { id: 'nuevo-' + c.id, nota, rutaId }); return; }
     await DB.registrarVisita({ clienteId: c.id, resultado, nota });
     if (rutaId) await marcarParadaHecha(rutaId, c.id);
     UI.closeSheet(); UI.toast(resultado === 'ausente' ? 'Anotado: ausente' : 'Visita guardada');
