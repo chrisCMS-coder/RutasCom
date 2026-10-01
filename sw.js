@@ -1,5 +1,5 @@
 /* Service worker: la app completa queda guardada en el móvil y abre sin conexión. */
-const VERSION = 'v1.1.0';
+const VERSION = 'v1.3.0';
 const SHELL = `rutas-shell-${VERSION}`;
 const TILES = 'rutas-tiles';
 const FILES = [

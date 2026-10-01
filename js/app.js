@@ -23,10 +23,11 @@ const APP = {
       if (APP.pin && Date.now() - (APP._hiddenAt || 0) > 5 * 60 * 1000) APP.lock(); else APP.render();
     });
     history.replaceState({ name: 'hoy', params: {} }, '');
+    await SYNC.init();
+    if (SYNC.estado === 'sin-sesion') await APP.login();
     APP.pin = await DB.get('pin', null);
     if (APP.pin) await APP.lock();
     APP.render();
-    SYNC.init();
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('sw.js').then(reg => {
         reg.addEventListener('updatefound', () => {
@@ -35,6 +36,38 @@ const APP = {
         });
       }).catch(e => console.warn('sw', e));
     }
+  },
+  /* ---------- inicio de sesión (copia en línea), antes del PIN ---------- */
+  async login() {
+    const email = await DB.get('syncEmail', '');
+    return new Promise(res => {
+      const el = UI.el(`<div class="lock"><form class="pinpad" novalidate>
+        <div class="col center" style="gap:6px;align-items:center"><div class="pin-title">Rutas Comerciales</div><div class="muted small" style="text-align:center">Inicia sesión para tener tus datos en todos tus dispositivos</div></div>
+        <div class="field"><label for="le">Email</label><input id="le" type="email" autocomplete="username" value="${U.esc(email)}"></div>
+        <div class="field"><label for="lp">Contraseña</label><input id="lp" type="password" autocomplete="current-password"></div>
+        <div class="small" data-err style="color:var(--rojo);min-height:1.2em;text-align:center"></div>
+        <button class="btn primary block" type="submit">Iniciar sesión</button>
+        <button type="button" class="pin-foot hidden" data-offline style="background:none;border:0">Sin conexión · seguir con los datos de este dispositivo</button>
+      </form></div>`);
+      const err = el.querySelector('[data-err]'), off = el.querySelector('[data-offline]'), btn = el.querySelector('[type=submit]');
+      const fin = () => { el.remove(); res(); };
+      off.classList.toggle('hidden', navigator.onLine);
+      off.onclick = fin;
+      el.querySelector('form').onsubmit = async e => {
+        e.preventDefault();
+        const em = el.querySelector('#le').value.trim(), pw = el.querySelector('#lp').value;
+        if (!em || !pw) { err.textContent = 'Escribe tu email y tu contraseña'; return; }
+        btn.disabled = true; err.textContent = '';
+        try { await SYNC.login(em, pw); fin(); }
+        catch (x) {
+          if (SYNC.esRed(x) || !navigator.onLine) { err.textContent = 'Sin conexión. Inténtalo de nuevo.'; off.classList.remove('hidden'); }
+          else err.textContent = /invalid login/i.test(x.message || '') ? 'Email o contraseña incorrectos' : (x.message || String(x));
+          btn.disabled = false;
+        }
+      };
+      document.getElementById('overlay').appendChild(el);
+      setTimeout(() => el.querySelector(email ? '#lp' : '#le').focus(), 50);
+    });
   },
   /* ---------- PIN de bloqueo ---------- */
   async pinHash(pin, salt) { return U.hash(salt + ':' + pin); },
