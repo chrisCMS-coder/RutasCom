@@ -44,7 +44,7 @@ const SYNC = {
     return 'confirmar';
   },
   async logout() {
-    if (SYNC.estado === 'ok' && navigator.onLine) await SYNC.ahora().catch(() => { }); // subir lo pendiente antes de salir
+    if (SYNC.estado === 'ok') await SYNC.ahora().catch(() => { }); // subir lo pendiente antes de salir
     if (SYNC.client) await SYNC.client.auth.signOut().catch(() => { });
     SYNC.estado = 'sin-sesion'; SYNC._emit(); },
   async desactivar() { await SYNC.logout(); await DB.set('supabase', null); SYNC.client = null; SYNC.estado = 'off'; SYNC._emit(); },
@@ -60,10 +60,11 @@ const SYNC = {
   sesion() { // getSession con límite de tiempo (con el token caducado intenta renovarlo por red)
     return Promise.race([SYNC.client.auth.getSession(), U.sleep(8000).then(() => ({ data: { session: null }, error: { name: 'timeout' } }))]);
   },
-  esRed(e) { return !!e && (!navigator.onLine || /retryable|fetch|network|timeout/i.test((e.name || '') + ' ' + (e.message || ''))); },
+  // navigator.onLine no es fiable en algunos Android: se mira el error real
+  esRed(e) { return !!e && /retryable|fetch|network|timeout|load failed/i.test((e.name || '') + ' ' + (e.message || '')); },
 
   programar(ms) {
-    if (SYNC.estado !== 'ok' || !navigator.onLine) return;
+    if (SYNC.estado !== 'ok') return;
     clearTimeout(SYNC._timer); SYNC._timer = setTimeout(() => SYNC.ahora().catch(e => console.warn(e)), ms);
   },
 
@@ -72,7 +73,7 @@ const SYNC = {
     SYNC._running = true; SYNC.error = null;
     try {
       const { data: s, error: se } = await SYNC.sesion();
-      if (!s.session) { if (SYNC.esRed(se)) SYNC.error = 'Sin conexión con la copia en línea'; else SYNC.estado = 'sin-sesion'; return; }
+      if (!s.session) { if (SYNC.esRed(se)) SYNC.error = 'Sin conexión con la copia en línea (' + (se.message || se.name) + ')'; else SYNC.estado = 'sin-sesion'; return; }
       const uid = s.session.user.id;
       // 1) subir pendientes
       const pend = await db.outbox.toArray();
@@ -112,7 +113,7 @@ const SYNC = {
       if (cambios) DB.changed('sync');
     } catch (e) {
       SYNC.error = e.message || String(e);
-      if (/paused|fetch|network/i.test(SYNC.error)) SYNC.error = 'Sin conexión con la copia en línea';
+      if (/paused|fetch|network/i.test(SYNC.error)) SYNC.error = 'Sin conexión con la copia en línea (' + SYNC.error + ')';
       console.warn('sync', e);
     } finally { SYNC._running = false; SYNC._emit(); }
   },
