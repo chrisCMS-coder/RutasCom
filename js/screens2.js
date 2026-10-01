@@ -248,10 +248,12 @@ SCREENS.ubicacion = async ({ id }) => {
 /* ======================= AJUSTES ======================= */
 SCREENS.ajustes = async () => {
   const a = APP.ajustes; const h = a.horario;
-  const [counts, clientes, lastBackup, demo] = await Promise.all([DB.counts(), DB.clientes(), DB.get('lastBackup', null), DB.get('demoCargada', false)]);
+  const [counts, clientes, lastBackup, demo, email] = await Promise.all([DB.counts(), DB.clientes(), DB.get('lastBackup', null), DB.get('demoCargada', false), DB.get('syncEmail', '')]);
   const pendGeo = clientes.filter(c => !c.lat && c.geocodeStatus !== 'manual').length, fallos = clientes.filter(c => !c.lat && c.geocodeStatus === 'fallo').length, aprox = clientes.filter(c => c.geocodeStatus === 'aprox').length;
   const syncTxt = { off: 'Desactivada', 'sin-sesion': 'Configurada, sin iniciar sesión', ok: SYNC.error ? 'Error: ' + SYNC.error : (SYNC.ultimo ? 'Al día · ' + U.fmtDate(SYNC.ultimo, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Activa'), error: 'Error: ' + SYNC.error }[SYNC.estado];
   const el = screen(topbar('Ajustes') + `
+    ${SYNC.estado === 'ok' ? `<div class="section"><div class="section-title">Cuenta</div>
+      <div class="card"><div class="row between"><div class="col"><div class="bold">${U.esc(email || 'Sesión iniciada')}</div><div class="muted small">Tus datos se sincronizan con tus otros dispositivos</div></div><button class="btn sm outline" data-logout>Cerrar sesión</button></div></div></div>` : ''}
     <div class="section"><div class="section-title">Datos</div>
       <div class="muted small">${counts.clientes} clientes · ${counts.visitas} visitas · ${counts.pedidos} pedidos · ${counts.catalogo} artículos en catálogo</div>
       <button class="btn" data-go="importar">${I.svg(I.file, 18)} Importar clientes desde Excel</button>
@@ -287,6 +289,10 @@ SCREENS.ajustes = async () => {
   ['as', 'al', 'ad', 'ha', 'hc', 'hmd', 'hma'].forEach(i => el.querySelector('#' + i).onchange = saveHor);
   el.querySelectorAll('[data-sw]').forEach(b => b.onclick = async () => { const on = b.getAttribute('aria-checked') !== 'true'; b.setAttribute('aria-checked', on); a.horario[b.dataset.sw] = on; await APP.guardarAjustes({ horario: a.horario }); });
   el.querySelector('[data-ao]').onclick = async e => { const t = el.querySelector('#ao').value.trim(); if (!t) return; e.target.disabled = true; const g = await GEO.geocodeTexto(t); e.target.disabled = false; if (!g) { UI.toast('No encuentro ese lugar'); return; } await APP.guardarAjustes({ origen: { nombre: t, lat: g.lat, lng: g.lng } }); UI.toast('Punto de salida guardado'); };
+  el.querySelector('[data-logout]')?.addEventListener('click', async () => {
+    if (!await UI.confirm('¿Cerrar sesión?', 'Lo pendiente se sube antes de salir. Para volver a entrar hará falta tu email y contraseña.', { ok: 'Cerrar sesión' })) return;
+    await SYNC.logout(); await APP.login(); APP.render();
+  });
   el.querySelector('[data-expcli]').onclick = async () => { await XIO.compartir(XIO.clientesXlsx(clientes), `clientes_${U.today()}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Clientes'); };
   el.querySelector('[data-geo]')?.addEventListener('click', async e => { e.target.disabled = true; const gp = el.querySelector('#gp'); gp.classList.remove('hidden'); await APP.geocodificarPendientes(g => { gp.firstElementChild.style.width = (g.hechos / g.total * 100) + '%'; }); UI.toast('Búsqueda terminada'); });
   el.querySelector('[data-backup]').onclick = async () => {
