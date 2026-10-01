@@ -85,7 +85,12 @@ const U = {
     return { l1, l2, full: [l1, l2].filter(Boolean).join(', ') };
   },
   mapsUrl(c) {
-    const dest = (c.lat && c.lng) ? `${c.lat},${c.lng}` : encodeURIComponent(U.direccion(c).full + ', España');
+    // Se envía la dirección escrita: las coordenadas de OpenStreetMap son a veces aproximadas (punto en la calle)
+    // y Google mostraría otro número o CP. Sin calle se añade el nombre del comercio para que Google lo encuentre.
+    // Solo coordenadas si el cliente se situó a mano o no hay ningún dato de dirección.
+    const d = U.direccion(c);
+    const texto = d.l1 ? d.full : [c.nombre, d.l2].filter(Boolean).join(', ');
+    const dest = c.lat && c.lng && (c.geocodeStatus === 'manual' || !d.full) ? `${c.lat},${c.lng}` : encodeURIComponent(texto + ', España');
     return `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
   },
   /* Estado de visita: verde / ambar / rojo / azul (sin visitar) */
