@@ -269,20 +269,32 @@ SCREENS.pedidos = async () => {
   const [todos, byId] = await Promise.all([db.pedidos.toArray(), clientesById()]);
   const vivos = todos.filter(p => !p.deleted).sort((a, b) => b.fecha.localeCompare(a.fecha));
   const pendientes = vivos.filter(p => !p.enviado);
-  const hoy = U.today();
-  const lista = st.vista === 'pendientes' ? pendientes : st.vista === 'hoy' ? vivos.filter(p => p.fecha.slice(0, 10) === hoy) : vivos.slice(0, 200);
+  const hoy = U.today(), ahora = new Date();
+  const diaDe = p => U.isoDate(new Date(p.fecha)); // fecha guardada en UTC: se agrupa por el día local
+  const lunes = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate() - (ahora.getDay() + 6) % 7);
+  const rangos = { hoy: [hoy, hoy], semana: [U.isoDate(lunes), hoy], mes: [hoy.slice(0, 8) + '01', hoy] };
+  if (!st.desde) { st.desde = rangos.mes[0]; st.hasta = hoy; }
+  if (st.vista === 'rango' && st.desde > st.hasta) [st.desde, st.hasta] = [st.hasta, st.desde];
+  const r = st.vista === 'rango' ? [st.desde, st.hasta] : rangos[st.vista];
+  const lista = st.vista === 'pendientes' ? pendientes : r ? vivos.filter(p => { const d = diaDe(p); return d >= r[0] && d <= r[1]; }) : vivos.slice(0, 200);
+  const importe = lista.reduce((s, p) => s + (p.lineas || []).reduce((t, l) => t + (l.precio || 0) * (l.cantidad || 0), 0), 0);
+  const unidades = lista.reduce((s, p) => s + (p.lineas || []).reduce((t, l) => t + (l.cantidad || 0), 0), 0);
   let html = '', dia = null;
   for (const p of lista) {
-    const d = p.fecha.slice(0, 10); if (d !== dia) { dia = d; html += `<div class="group-title">${d === hoy ? 'Hoy' : U.fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' })}</div>`; }
+    const d = diaDe(p); if (d !== dia) { dia = d; html += `<div class="group-title">${d === hoy ? 'Hoy' : U.fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' })}</div>`; }
     const c = byId[p.clienteId] || { nombre: '(cliente eliminado)' }; const uds = (p.lineas || []).reduce((s, l) => s + l.cantidad, 0);
-    html += `<button class="item" data-go="pedido:${p.id}"><div class="col grow"><div class="name">${U.esc(c.nombre)}</div><div class="meta">${(p.lineas || []).length} líneas · ${uds} uds · ${p.fecha.slice(11, 16)}${p.nota ? ' · ' + U.esc(p.nota.slice(0, 40)) : ''}</div></div><div class="right ${p.enviado ? 'tx-verde' : 'tx-ambar'}">${p.enviado ? 'Enviado' : 'Pendiente'}</div></button>`;
+    html += `<button class="item" data-go="pedido:${p.id}"><div class="col grow"><div class="name">${U.esc(c.nombre)}</div><div class="meta">${(p.lineas || []).length} líneas · ${uds} uds · ${new Date(p.fecha).toTimeString().slice(0, 5)}${p.nota ? ' · ' + U.esc(p.nota.slice(0, 40)) : ''}</div></div><div class="right ${p.enviado ? 'tx-verde' : 'tx-ambar'}">${p.enviado ? 'Enviado' : 'Pendiente'}</div></button>`;
   }
   const el = screen(`<div class="hdr"><div class="hdr-row"><h1>Pedidos</h1><div class="muted bold">${pendientes.length} pendientes</div></div></div>
-    <div class="chips">${[['pendientes', 'Pendientes de enviar'], ['hoy', 'Hoy'], ['todos', 'Todos']].map(([k, l]) => `<button class="chip ${st.vista === k ? 'on' : ''}" data-v="${k}">${l}</button>`).join('')}</div>
+    <div class="chips">${[['pendientes', 'Pendientes de enviar'], ['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes'], ['rango', 'Fechas…'], ['todos', 'Todos']].map(([k, l]) => `<button class="chip ${st.vista === k ? 'on' : ''}" data-v="${k}">${l}</button>`).join('')}</div>
+    ${st.vista === 'rango' ? `<div class="section" style="padding-top:4px"><div class="field-row"><div class="field"><label for="pdd">Desde</label><input type="date" id="pdd" value="${st.desde}" max="${hoy}"></div><div class="field"><label for="pdh">Hasta</label><input type="date" id="pdh" value="${st.hasta}"></div></div></div>` : ''}
+    ${r && lista.length ? `<div class="section" style="padding-top:4px"><div class="muted small bold">${lista.length} pedido${lista.length === 1 ? '' : 's'} · ${unidades} uds${importe ? ' · ' + importe.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : ''}</div></div>` : ''}
     ${pendientes.length ? `<div class="section" style="padding-top:8px"><button class="btn primary big" data-enviar>${I.svg(I.share, 20)} Enviar Excel · ${pendientes.length} pedido${pendientes.length === 1 ? '' : 's'}</button><div class="muted small center">Se abre el menú de compartir del móvil (WhatsApp, Gmail, Drive…)</div></div>` : ''}
     <div class="list">${html || '<div class="empty">No hay pedidos aquí</div>'}</div>`);
   wireGo(el);
   el.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { st.vista = b.dataset.v; APP.render(); });
+  requestAnimationFrame(() => { const on = el.querySelector('.chips .chip.on'); if (on) on.parentElement.scrollLeft = on.offsetLeft - 20; });
+  [['pdd', 'desde'], ['pdh', 'hasta']].forEach(([id, k]) => el.querySelector('#' + id)?.addEventListener('change', e => { if (e.target.value) { st[k] = e.target.value; APP.render(); } }));
   el.querySelector('[data-enviar]')?.addEventListener('click', async e => {
     e.target.disabled = true;
     const data = XIO.pedidosXlsx(pendientes, byId);

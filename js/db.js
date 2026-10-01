@@ -49,7 +49,7 @@ const DB = {
     return (await db.pedidos.where('clienteId').equals(clienteId).toArray()).filter(v => !v.deleted).sort((a, b) => b.fecha.localeCompare(a.fecha));
   },
   async pedidosDelDia(isoDate) {
-    return (await db.pedidos.toArray()).filter(p => !p.deleted && p.fecha.slice(0, 10) === isoDate).sort((a, b) => a.fecha.localeCompare(b.fecha));
+    return (await db.pedidos.toArray()).filter(p => !p.deleted && U.isoDate(new Date(p.fecha)) === isoDate).sort((a, b) => a.fecha.localeCompare(b.fecha));
   },
   async pedidosPendientes() {
     return (await db.pedidos.toArray()).filter(p => !p.deleted && !p.enviado).sort((a, b) => a.fecha.localeCompare(b.fecha));
