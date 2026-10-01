@@ -1,6 +1,6 @@
 /* Arranque, navegación y lógica compartida (rutas, geocodificación en cola). */
 const APP = {
-  VERSION: '1.0.0',
+  VERSION: '1.1.0',
   state: { name: 'hoy', params: {} },
   TABS: [['hoy', 'Hoy', I.home], ['clientes', 'Clientes', I.users], ['mapa', 'Mapa', I.map], ['rutas', 'Rutas', I.route], ['pedidos', 'Pedidos', I.box]],
   ajustes: {},
@@ -17,8 +17,14 @@ const APP = {
     });
     window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); APP.installPrompt = e; });
     DB.onChange(U.debounce(() => { if (document.querySelector('#app .screen[data-static]')) return; if (!UI._sheet) APP.render(); else APP._dirty = true; }, 150));
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { SYNC.programar(500); APP.render(); } });
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { APP._hiddenAt = Date.now(); return; }
+      SYNC.programar(500);
+      if (APP.pin && Date.now() - (APP._hiddenAt || 0) > 5 * 60 * 1000) APP.lock(); else APP.render();
+    });
     history.replaceState({ name: 'hoy', params: {} }, '');
+    APP.pin = await DB.get('pin', null);
+    if (APP.pin) await APP.lock();
     APP.render();
     SYNC.init();
     if ('serviceWorker' in navigator) {
@@ -30,6 +36,33 @@ const APP = {
       }).catch(e => console.warn('sw', e));
     }
   },
+  /* ---------- PIN de bloqueo ---------- */
+  async pinHash(pin, salt) { return U.hash(salt + ':' + pin); },
+  async setPin(pin) { const salt = U.randomHex(); APP.pin = { salt, hash: await APP.pinHash(pin, salt) }; await DB.set('pin', APP.pin); },
+  async clearPin() { APP.pin = null; await DB.set('pin', null); },
+  async checkPin(pin) { return !!APP.pin && (await APP.pinHash(pin, APP.pin.salt)) === APP.pin.hash; },
+  lock() {
+    if (APP._lockEl) return APP._lockP;
+    let fallos = 0;
+    APP._lockP = new Promise(res => {
+      const el = UI.pinPad({ titulo: 'Introduce tu PIN', sub: 'Rutas Comerciales', fullscreen: true, auto: APP.pin.len || 0,
+        extra: '<button type="button" class="pin-foot" data-olvido style="background:none;border:0">¿Has olvidado el PIN?</button>',
+        onEnter: async pin => {
+          if (fallos >= 5) { await U.sleep(3000); }
+          if (await APP.checkPin(pin)) { el.remove(); APP._lockEl = null; res(true); return true; }
+          fallos++; return fallos >= 5 ? 'PIN incorrecto · espera unos segundos' : 'PIN incorrecto';
+        } });
+      el.querySelector('[data-olvido]').onclick = () => {
+        const s = UI.sheet(`<div class="grip"></div><h2>PIN olvidado</h2><p class="muted small" style="margin:0">El PIN no se puede recuperar. La única salida es borrar los datos de este móvil y volver a empezar: después podrás restaurar una copia de seguridad o iniciar sesión en la copia en línea.</p>
+          <div class="btn-row"><button class="btn" data-a="c">Cancelar</button><button class="btn danger" data-a="ok">Borrar datos y quitar PIN</button></div>`);
+        s.querySelector('[data-a=c]').onclick = () => UI.closeSheet();
+        s.querySelector('[data-a=ok]').onclick = async () => { await DB.wipe(); await DB.set('demoCargada', false); await APP.clearPin(); UI.closeSheet(true); el.remove(); APP._lockEl = null; res(true); APP.go('hoy', {}, true); };
+      };
+      document.getElementById('overlay').appendChild(el); APP._lockEl = el;
+    });
+    return APP._lockP;
+  },
+
   async cargarAjustes() {
     const def = {
       origen: { nombre: 'Barcelona', lat: 41.3874, lng: 2.1686 }, salida: '08:30', limite: '18:00', duracion: 30, frecuenciaDias: 30,

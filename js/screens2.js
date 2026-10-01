@@ -272,6 +272,10 @@ SCREENS.ajustes = async () => {
       <div class="field-row"><div class="field"><label for="hmd">Desde</label>${UI.horaInput('hmd', h.mediodiaDe)}</div><div class="field"><label for="hma">Hasta</label>${UI.horaInput('hma', h.mediodiaA)}</div></div>
       <div class="switch-row"><span class="bold">Lunes por la mañana cerrados</span><button class="switch" data-sw="lunesCerrado" role="switch" aria-checked="${!!h.lunesCerrado}"></button></div>
       <div class="switch-row"><span class="bold">Sábados cerrados</span><button class="switch" data-sw="cierraSabado" role="switch" aria-checked="${!!h.cierraSabado}"></button></div></div>
+    <div class="section"><div class="section-title">Seguridad</div>
+      <div class="card"><div class="row between"><div class="col"><div class="bold">Bloqueo con PIN</div><div class="muted small">${APP.pin ? 'Activado · se pide al abrir la app y tras 5 min en segundo plano' : 'Desactivado'}</div></div>
+        <button class="btn sm ${APP.pin ? 'outline' : 'primary'}" data-pin>${APP.pin ? 'Cambiar' : 'Activar'}</button></div>
+        ${APP.pin ? '<button class="btn ghost sm" data-pin-off style="margin-top:8px;align-self:flex-start">Quitar el PIN</button>' : ''}</div></div>
     <div class="section"><div class="section-title">Datos de prueba</div>
       ${demo ? '<button class="btn danger" data-borrardemo>Eliminar los clientes de prueba</button>' : '<button class="btn" data-demo>Cargar clientes de prueba (librerías reales de Cataluña)</button>'}
       <button class="btn ghost" data-wipe>Borrar todos los datos de la app</button></div>
@@ -296,12 +300,36 @@ SCREENS.ajustes = async () => {
     catch (err) { UI.toast(err.message); }
   };
   el.querySelector('[data-sync]').onclick = sheetSync;
+  el.querySelector('[data-pin]').onclick = () => sheetPin();
+  el.querySelector('[data-pin-off]')?.addEventListener('click', () => sheetPin({ quitar: true }));
   el.querySelector('[data-demo]')?.addEventListener('click', async e => { e.target.disabled = true; const n = await APP.cargarDemo(); UI.toast(`${n} clientes de prueba cargados`); });
   el.querySelector('[data-borrardemo]')?.addEventListener('click', async () => { if (await UI.confirm('¿Eliminar los clientes de prueba?', 'Se eliminan los clientes marcados como demo, con sus visitas y pedidos.', { ok: 'Eliminar', danger: true })) { const ids = clientes.filter(c => c.demo).map(c => c.id); for (const id of ids) await DB.softDelete('clientes', id); const vs = (await db.visitas.toArray()).filter(v => ids.includes(v.clienteId)); for (const v of vs) await DB.softDelete('visitas', v.id); const ps = (await db.pedidos.toArray()).filter(p => ids.includes(p.clienteId)); for (const p of ps) await DB.softDelete('pedidos', p.id); await DB.set('demoCargada', false); UI.toast('Datos de prueba eliminados'); } });
   el.querySelector('[data-wipe]').onclick = async () => { if (await UI.confirm('¿Borrar TODO?', 'Clientes, visitas, pedidos, rutas y catálogo de este móvil. Haz una copia antes.', { ok: 'Borrar todo', danger: true })) { await DB.wipe(); await DB.set('demoCargada', false); UI.toast('Datos borrados'); APP.go('hoy', {}, true); } };
   el.querySelector('[data-install]')?.addEventListener('click', async () => { APP.installPrompt.prompt(); APP.installPrompt = null; });
   return el;
 };
+
+/* Activar / cambiar / quitar el PIN. Pasos: PIN actual (si existe) → nuevo → confirmar */
+function sheetPin({ quitar = false } = {}) {
+  let paso = APP.pin ? 'actual' : 'nuevo', nuevo = '';
+  const titulos = { actual: 'PIN actual', nuevo: quitar ? '' : 'Nuevo PIN', confirmar: 'Repite el nuevo PIN' };
+  const s = UI.sheet(`<div class="grip"></div><div id="pinBox"></div>`);
+  const box = s.querySelector('#pinBox');
+  const pintar = () => {
+    box.replaceChildren(UI.pinPad({ titulo: titulos[paso], sub: paso === 'nuevo' ? 'De 4 a 6 cifras' : '', onEnter: async pin => {
+      if (paso === 'actual') {
+        if (!(await APP.checkPin(pin))) return 'PIN incorrecto';
+        if (quitar) { await APP.clearPin(); UI.closeSheet(); UI.toast('PIN desactivado'); APP.render(); return true; }
+        paso = 'nuevo'; pintar(); return true;
+      }
+      if (paso === 'nuevo') { if (pin.length < 4) return 'Mínimo 4 cifras'; nuevo = pin; paso = 'confirmar'; pintar(); return true; }
+      if (pin !== nuevo) { paso = 'nuevo'; pintar(); return 'No coinciden, vuelve a empezar'; }
+      await APP.setPin(pin); APP.pin.len = pin.length; await DB.set('pin', APP.pin);
+      UI.closeSheet(); UI.toast('PIN activado'); APP.render(); return true;
+    } }));
+  };
+  pintar();
+}
 
 async function sheetSync() {
   const cfg = SYNC.cfg || {};

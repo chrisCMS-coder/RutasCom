@@ -88,6 +88,38 @@ const UI = {
   micBtn(targetId) { return `<button type="button" class="iconbtn flat" data-mic="${targetId}" aria-label="Dictar">${I.svg(I.mic, 20)}</button>`; },
   wireMics(root) { root.querySelectorAll('[data-mic]').forEach(b => { b.onclick = () => UI.dictar(root.querySelector('#' + b.dataset.mic), b); }); },
 
+  /* ---------- teclado de PIN ----------
+     opts: {titulo, sub, onEnter(pin) -> Promise<true|string error>, extra (html), fullscreen} */
+  pinPad(opts) {
+    let pin = '';
+    const el = UI.el(`<div class="${opts.fullscreen ? 'lock' : 'pinpad-wrap'}"><div class="pinpad">
+      <div class="col center" style="gap:6px;align-items:center"><div class="pin-title">${U.esc(opts.titulo)}</div><div class="muted small" id="pinSub">${U.esc(opts.sub || '')}</div></div>
+      <div class="pin-dots" aria-live="polite">${[0, 1, 2, 3, 4, 5].map(() => '<span></span>').join('')}</div>
+      <div class="pin-keys">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map(k => k === '' ? '<span></span>' : `<button type="button" data-k="${k}" aria-label="${k === '⌫' ? 'Borrar' : k}">${k}</button>`).join('')}</div>
+      ${opts.extra || ''}</div></div>`);
+    const dots = el.querySelectorAll('.pin-dots span'), sub = el.querySelector('#pinSub');
+    const paint = () => dots.forEach((d, i) => { d.classList.toggle('on', i < pin.length); d.classList.toggle('hidden', i >= Math.max(4, pin.length)); });
+    paint();
+    let busy = false;
+    const enter = async () => {
+      busy = true;
+      const r = await opts.onEnter(pin);
+      if (r !== true) { sub.textContent = r || 'PIN incorrecto'; sub.style.color = 'var(--rojo)'; el.querySelector('.pin-dots').classList.add('shake'); setTimeout(() => el.querySelector('.pin-dots').classList.remove('shake'), 400); pin = ''; paint(); }
+      busy = false;
+    };
+    el.querySelectorAll('[data-k]').forEach(b => b.onclick = () => {
+      if (busy) return;
+      if (b.dataset.k === '⌫') pin = pin.slice(0, -1);
+      else if (pin.length < 6) pin += b.dataset.k;
+      paint();
+      if (pin.length === 6 || (opts.auto && pin.length === opts.auto)) enter();
+    });
+    el.querySelector('.pin-keys').insertAdjacentHTML('afterend', `<button type="button" class="btn primary block" data-pin-ok style="margin-top:4px">Aceptar</button>`);
+    el.querySelector('[data-pin-ok]').onclick = () => { if (pin.length >= 4 && !busy) enter(); else if (pin.length < 4) { sub.textContent = 'Mínimo 4 cifras'; } };
+    el.reset = () => { pin = ''; paint(); };
+    return el;
+  },
+
   /* ---------- mapas (Leaflet + OpenStreetMap) ---------- */
   map(container, opts = {}) {
     const m = L.map(container, { zoomControl: false, attributionControl: true, ...opts });

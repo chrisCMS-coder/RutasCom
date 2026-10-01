@@ -68,6 +68,11 @@ const U = {
     return 2 * R * Math.asin(Math.sqrt(h));
   },
   debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; },
+  async hash(str) { // SHA-256 en hexadecimal (para el PIN)
+    if (crypto.subtle) { const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join(''); }
+    let h = 0x811c9dc5; for (const ch of str) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return 'fnv' + h.toString(16);
+  },
+  randomHex(n = 16) { const a = new Uint8Array(n); crypto.getRandomValues(a); return [...a].map(x => x.toString(16).padStart(2, '0')).join(''); },
   sleep(ms) { return new Promise(r => setTimeout(r, ms)); },
   frecuenciaLabel(dias) {
     const map = { 7: 'Semanal', 15: 'Quincenal', 30: 'Mensual', 45: 'Cada 45 días', 60: 'Bimensual', 90: 'Trimestral', 120: 'Cada 4 meses', 180: '6 meses', 365: 'Anual' };
