@@ -347,7 +347,7 @@ async function sheetSync() {
   s.querySelector('[data-a=in]')?.addEventListener('click', async e => { e.target.disabled = true; try { await conf(); await SYNC.login(g('se'), g('sp')); UI.closeSheet(); UI.toast('Copia en línea activada'); APP.render(); } catch (err) { UI.toast(err.message); e.target.disabled = false; } });
   s.querySelector('[data-a=reg]')?.addEventListener('click', async e => { e.target.disabled = true; try { await conf(); const r = await SYNC.registro(g('se'), g('sp')); UI.closeSheet(); UI.toast(r === 'confirmar' ? 'Revisa tu correo para confirmar la cuenta y luego inicia sesión' : 'Cuenta creada y copia activada', 5000); APP.render(); } catch (err) { UI.toast(err.message); e.target.disabled = false; } });
   s.querySelector('[data-a=now]')?.addEventListener('click', async e => { e.target.disabled = true; await SYNC.ahora(); UI.closeSheet(); UI.toast(SYNC.error ? SYNC.error : 'Sincronizado'); APP.render(); });
-  s.querySelector('[data-a=out]')?.addEventListener('click', async () => { await SYNC.logout(); UI.closeSheet(); APP.render(); });
+  s.querySelector('[data-a=out]')?.addEventListener('click', async () => { await SYNC.logout(); UI.closeSheet(); await APP.login(); APP.render(); });
   s.querySelector('[data-a=off]')?.addEventListener('click', async () => { await SYNC.desactivar(); UI.closeSheet(); APP.render(); });
   s.querySelector('[data-a=copysql]')?.addEventListener('click', async () => { try { await navigator.clipboard.writeText(SYNC.SQL); UI.toast('SQL copiado'); } catch (e) { UI.toast('No se pudo copiar'); } });
 }

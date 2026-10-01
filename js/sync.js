@@ -14,8 +14,10 @@ const SYNC = {
     if (!SYNC.cfg || !SYNC.cfg.url || !SYNC.cfg.key) { SYNC.estado = 'off'; return; }
     try {
       SYNC.client = supabase.createClient(SYNC.cfg.url, SYNC.cfg.key, { auth: { persistSession: true, autoRefreshToken: true } });
-      const { data } = await SYNC.client.auth.getSession();
-      SYNC.estado = data.session ? 'ok' : 'sin-sesion';
+      const { data, error } = await SYNC.sesion();
+      if (data.session) { await SYNC._propietario(data.session.user.id); SYNC.estado = 'ok'; }
+      // sin red y con un usuario ya conectado en este dispositivo: se sigue trabajando y se sincroniza al volver la conexión
+      else SYNC.estado = SYNC.esRed(error) && (await DB.get('syncUid', null)) ? 'ok' : 'sin-sesion';
     } catch (e) { SYNC.estado = 'error'; SYNC.error = e.message; }
     SYNC._emit();
     if (SYNC.estado === 'ok') SYNC.programar(1500);
@@ -29,19 +31,36 @@ const SYNC = {
   },
   async login(email, password) {
     if (!SYNC.client) throw new Error('Configura primero la URL y la clave');
-    const { error } = await SYNC.client.auth.signInWithPassword({ email, password });
+    const { data, error } = await SYNC.client.auth.signInWithPassword({ email, password });
     if (error) throw error;
+    await SYNC._propietario(data.user.id); await DB.set('syncEmail', email);
     SYNC.estado = 'ok'; SYNC._emit(); SYNC.programar(500);
   },
   async registro(email, password) {
     if (!SYNC.client) throw new Error('Configura primero la URL y la clave');
     const { data, error } = await SYNC.client.auth.signUp({ email, password });
     if (error) throw error;
-    if (data.session) { SYNC.estado = 'ok'; SYNC._emit(); SYNC.programar(500); return 'ok'; }
+    if (data.session) { await SYNC._propietario(data.user.id); await DB.set('syncEmail', email); SYNC.estado = 'ok'; SYNC._emit(); SYNC.programar(500); return 'ok'; }
     return 'confirmar';
   },
-  async logout() { if (SYNC.client) await SYNC.client.auth.signOut(); SYNC.estado = 'sin-sesion'; SYNC._emit(); },
+  async logout() {
+    if (SYNC.estado === 'ok' && navigator.onLine) await SYNC.ahora().catch(() => { }); // subir lo pendiente antes de salir
+    if (SYNC.client) await SYNC.client.auth.signOut().catch(() => { });
+    SYNC.estado = 'sin-sesion'; SYNC._emit(); },
   async desactivar() { await SYNC.logout(); await DB.set('supabase', null); SYNC.client = null; SYNC.estado = 'off'; SYNC._emit(); },
+
+  // Los datos locales pertenecen a un solo usuario: si inicia sesión otro, se vacían y se bajan los suyos.
+  async _propietario(uid) {
+    const prev = await DB.get('syncUid', null);
+    if (prev === uid) return;
+    if (prev) await DB.wipe();
+    await DB.set('syncDesde', null); await DB.set('syncUltimo', null); SYNC.ultimo = null;
+    await DB.set('syncUid', uid);
+  },
+  sesion() { // getSession con límite de tiempo (con el token caducado intenta renovarlo por red)
+    return Promise.race([SYNC.client.auth.getSession(), U.sleep(8000).then(() => ({ data: { session: null }, error: { name: 'timeout' } }))]);
+  },
+  esRed(e) { return !!e && (!navigator.onLine || /retryable|fetch|network|timeout/i.test((e.name || '') + ' ' + (e.message || ''))); },
 
   programar(ms) {
     if (SYNC.estado !== 'ok' || !navigator.onLine) return;
@@ -52,8 +71,8 @@ const SYNC = {
     if (SYNC._running || !SYNC.client || SYNC.estado !== 'ok') return;
     SYNC._running = true; SYNC.error = null;
     try {
-      const { data: s } = await SYNC.client.auth.getSession();
-      if (!s.session) { SYNC.estado = 'sin-sesion'; return; }
+      const { data: s, error: se } = await SYNC.sesion();
+      if (!s.session) { if (SYNC.esRed(se)) SYNC.error = 'Sin conexión con la copia en línea'; else SYNC.estado = 'sin-sesion'; return; }
       const uid = s.session.user.id;
       // 1) subir pendientes
       const pend = await db.outbox.toArray();
