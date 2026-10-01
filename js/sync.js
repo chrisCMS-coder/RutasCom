@@ -2,12 +2,14 @@
    Modelo: una tabla `registros` (user_id, kind, id, data, updated_at, deleted). Último en escribir gana. */
 const SYNC = {
   client: null, cfg: null, estado: 'off', ultimo: null, error: null, _timer: null, _running: false,
+  // Proyecto por defecto: así basta con iniciar sesión en cada dispositivo. La clave publishable es pública por diseño (RLS protege los datos).
+  DEFAULT: { url: 'https://rsjlsgilfuubuixrfepp.supabase.co', key: 'sb_publishable_oQCCweWb1iQVSrkveOmeAw_UzpZqJCJ' },
   listeners: new Set(),
   onChange(fn) { SYNC.listeners.add(fn); },
   _emit() { for (const fn of SYNC.listeners) { try { fn(SYNC); } catch (e) { } } },
 
   async init() {
-    SYNC.cfg = await DB.get('supabase', null);
+    SYNC.cfg = await DB.get('supabase', SYNC.DEFAULT); // null = desactivada a propósito
     SYNC.ultimo = await DB.get('syncUltimo', null);
     if (!SYNC.cfg || !SYNC.cfg.url || !SYNC.cfg.key) { SYNC.estado = 'off'; return; }
     try {
