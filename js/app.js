@@ -51,7 +51,6 @@ const APP = {
       </form></div>`);
       const err = el.querySelector('[data-err]'), off = el.querySelector('[data-offline]'), btn = el.querySelector('[type=submit]');
       const fin = () => { el.remove(); res(); };
-      off.classList.toggle('hidden', navigator.onLine);
       off.onclick = fin;
       el.querySelector('form').onsubmit = async e => {
         e.preventDefault();
@@ -60,7 +59,7 @@ const APP = {
         btn.disabled = true; err.textContent = '';
         try { await SYNC.login(em, pw); fin(); }
         catch (x) {
-          if (SYNC.esRed(x) || !navigator.onLine) { err.textContent = 'Sin conexión. Inténtalo de nuevo.'; off.classList.remove('hidden'); }
+          if (SYNC.esRed(x)) { err.textContent = `Sin conexión. Inténtalo de nuevo. (${x.message || x.name})`; off.classList.remove('hidden'); }
           else err.textContent = /invalid login/i.test(x.message || '') ? 'Email o contraseña incorrectos' : (x.message || String(x));
           btn.disabled = false;
         }

@@ -1,5 +1,5 @@
 /* Service worker: la app completa queda guardada en el móvil y abre sin conexión. */
-const VERSION = 'v1.3.1';
+const VERSION = 'v1.3.2';
 const SHELL = `rutas-shell-${VERSION}`;
 const TILES = 'rutas-tiles';
 const FILES = [
@@ -12,7 +12,7 @@ const FILES = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(SHELL).then(c => Promise.allSettled(FILES.map(f => c.add(f).catch(() => null)))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(SHELL).then(c => Promise.allSettled(FILES.map(f => c.add(new Request(f, { cache: 'reload' })).catch(() => null)))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('rutas-shell-') && k !== SHELL).map(k => caches.delete(k)))).then(() => self.clients.claim()));
