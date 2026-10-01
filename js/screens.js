@@ -276,11 +276,11 @@ SCREENS.pedidos = async () => {
   if (!st.desde) { st.desde = rangos.mes[0]; st.hasta = hoy; }
   if (st.vista === 'rango' && st.desde > st.hasta) [st.desde, st.hasta] = [st.hasta, st.desde];
   const r = st.vista === 'rango' ? [st.desde, st.hasta] : rangos[st.vista];
-  const lista = st.vista === 'pendientes' ? pendientes : r ? vivos.filter(p => { const d = diaDe(p); return d >= r[0] && d <= r[1]; }) : vivos.slice(0, 200);
+  const lista = st.vista === 'pendientes' ? pendientes : r ? vivos.filter(p => { const d = diaDe(p); return d >= r[0] && d <= r[1]; }) : vivos;
   const importe = lista.reduce((s, p) => s + (p.lineas || []).reduce((t, l) => t + (l.precio || 0) * (l.cantidad || 0), 0), 0);
   const unidades = lista.reduce((s, p) => s + (p.lineas || []).reduce((t, l) => t + (l.cantidad || 0), 0), 0);
   let html = '', dia = null;
-  for (const p of lista) {
+  for (const p of lista.slice(0, 300)) {
     const d = diaDe(p); if (d !== dia) { dia = d; html += `<div class="group-title">${d === hoy ? 'Hoy' : U.fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' })}</div>`; }
     const c = byId[p.clienteId] || { nombre: '(cliente eliminado)' }; const uds = (p.lineas || []).reduce((s, l) => s + l.cantidad, 0);
     html += `<button class="item" data-go="pedido:${p.id}"><div class="col grow"><div class="name">${U.esc(c.nombre)}</div><div class="meta">${(p.lineas || []).length} líneas · ${uds} uds · ${new Date(p.fecha).toTimeString().slice(0, 5)}${p.nota ? ' · ' + U.esc(p.nota.slice(0, 40)) : ''}</div></div><div class="right ${p.enviado ? 'tx-verde' : 'tx-ambar'}">${p.enviado ? 'Enviado' : 'Pendiente'}</div></button>`;
@@ -288,8 +288,8 @@ SCREENS.pedidos = async () => {
   const el = screen(`<div class="hdr"><div class="hdr-row"><h1>Pedidos</h1><div class="muted bold">${pendientes.length} pendientes</div></div></div>
     <div class="chips">${[['pendientes', 'Pendientes de enviar'], ['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes'], ['rango', 'Fechas…'], ['todos', 'Todos']].map(([k, l]) => `<button class="chip ${st.vista === k ? 'on' : ''}" data-v="${k}">${l}</button>`).join('')}</div>
     ${st.vista === 'rango' ? `<div class="section" style="padding-top:4px"><div class="field-row"><div class="field"><label for="pdd">Desde</label><input type="date" id="pdd" value="${st.desde}" max="${hoy}"></div><div class="field"><label for="pdh">Hasta</label><input type="date" id="pdh" value="${st.hasta}"></div></div></div>` : ''}
-    ${r && lista.length ? `<div class="section" style="padding-top:4px"><div class="muted small bold">${lista.length} pedido${lista.length === 1 ? '' : 's'} · ${unidades} uds${importe ? ' · ' + importe.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : ''}</div></div>` : ''}
-    ${pendientes.length ? `<div class="section" style="padding-top:8px"><button class="btn primary big" data-enviar>${I.svg(I.share, 20)} Enviar Excel · ${pendientes.length} pedido${pendientes.length === 1 ? '' : 's'}</button><div class="muted small center">Se abre el menú de compartir del móvil (WhatsApp, Gmail, Drive…)</div></div>` : ''}
+    ${lista.length ? `<div class="section" style="padding-top:4px"><div class="muted small bold">${lista.length} pedido${lista.length === 1 ? '' : 's'} · ${unidades} uds${importe ? ' · ' + importe.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : ''}</div></div>` : ''}
+    ${lista.length ? `<div class="section" style="padding-top:8px"><button class="btn primary big" data-enviar>${I.svg(I.share, 20)} Enviar Excel · ${lista.length} pedido${lista.length === 1 ? '' : 's'}</button><div class="muted small center">Se abre el menú de compartir del móvil (WhatsApp, Gmail, Drive…)</div></div>` : ''}
     <div class="list">${html || '<div class="empty">No hay pedidos aquí</div>'}</div>`);
   wireGo(el);
   el.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { st.vista = b.dataset.v; APP.render(); });
@@ -297,14 +297,17 @@ SCREENS.pedidos = async () => {
   [['pdd', 'desde'], ['pdh', 'hasta']].forEach(([id, k]) => el.querySelector('#' + id)?.addEventListener('change', e => { if (e.target.value) { st[k] = e.target.value; APP.render(); } }));
   el.querySelector('[data-enviar]')?.addEventListener('click', async e => {
     e.target.disabled = true;
-    const data = XIO.pedidosXlsx(pendientes, byId);
-    const nombre = `pedidos_${hoy}.xlsx`;
-    const r = await XIO.compartir(data, nombre, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Pedidos ' + hoy);
+    // se exporta exactamente la selección del filtro, en orden cronológico
+    const sel = [...lista].sort((a, b) => a.fecha.localeCompare(b.fecha));
+    const data = XIO.pedidosXlsx(sel, byId);
+    const sufijo = st.vista === 'pendientes' ? 'pendientes_' + hoy : st.vista === 'todos' ? 'todos_' + hoy : r[0] === r[1] ? r[0] : `${r[0]}_a_${r[1]}`;
+    const res = await XIO.compartir(data, `pedidos_${sufijo}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Pedidos ' + sufijo.replace(/_/g, ' '));
     e.target.disabled = false;
-    if (r === 'cancelado') return;
-    if (await UI.confirm('¿Marcar como enviados?', `${pendientes.length} pedidos pasarán a «enviado». Seguirán en el historial.`, { ok: 'Sí, marcar' })) {
-      for (const p of pendientes) { p.enviado = true; p.enviadoAt = U.now(); }
-      await DB.bulkSave('pedidos', pendientes); UI.toast('Pedidos marcados como enviados');
+    if (res === 'cancelado') return;
+    const sinEnviar = sel.filter(p => !p.enviado);
+    if (sinEnviar.length && await UI.confirm('¿Marcar como enviados?', `${sinEnviar.length} pedido${sinEnviar.length === 1 ? '' : 's'} pasará${sinEnviar.length === 1 ? '' : 'n'} a «enviado». Seguirán en el historial.`, { ok: 'Sí, marcar' })) {
+      for (const p of sinEnviar) { p.enviado = true; p.enviadoAt = U.now(); }
+      await DB.bulkSave('pedidos', sinEnviar); UI.toast('Pedidos marcados como enviados');
     }
   });
   return el;
