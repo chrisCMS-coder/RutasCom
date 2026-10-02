@@ -114,19 +114,20 @@ const XIO = {
     const lineas = [], resumen = [];
     for (const p of pedidos) {
       const c = clientesById[p.clienteId] || {};
+      const f = new Date(p.fecha), fecha = U.isoDate(f), hora = f.toTimeString().slice(0, 5); // día y hora locales
       const dir = U.direccion(c);
       let total = 0, uds = 0;
       for (const l of p.lineas || []) {
         const imp = l.precio != null ? +(l.precio * l.cantidad).toFixed(2) : '';
         if (imp !== '') total += imp; uds += l.cantidad;
         lineas.push({
-          'Fecha': p.fecha.slice(0, 10), 'Hora': p.fecha.slice(11, 16), 'Código cliente': c.codigo || '', 'Cliente': c.nombre || '',
+          'Fecha': fecha, 'Hora': hora, 'Código cliente': c.codigo || '', 'Cliente': c.nombre || '',
           'Dirección': dir.l1, 'CP': c.cp || '', 'Localidad': c.localidad || '', 'Contacto': c.contacto || '',
           'Referencia': l.ref || '', 'Título': l.titulo || '', 'Cantidad': l.cantidad, 'Precio': l.precio ?? '', 'Importe': imp,
           'Nota línea': l.nota || '', 'Nota pedido': p.nota || '', 'Nº pedido': p.numero || p.id.slice(0, 8),
         });
       }
-      resumen.push({ 'Fecha': p.fecha.slice(0, 10), 'Nº pedido': p.numero || p.id.slice(0, 8), 'Código cliente': c.codigo || '', 'Cliente': c.nombre || '', 'Localidad': c.localidad || '', 'Líneas': (p.lineas || []).length, 'Unidades': uds, 'Importe': +total.toFixed(2), 'Nota': p.nota || '' });
+      resumen.push({ 'Fecha': fecha, 'Nº pedido': p.numero || p.id.slice(0, 8), 'Código cliente': c.codigo || '', 'Cliente': c.nombre || '', 'Localidad': c.localidad || '', 'Líneas': (p.lineas || []).length, 'Unidades': uds, 'Importe': +total.toFixed(2), 'Nota': p.nota || '' });
     }
     return { lineas, resumen };
   },
