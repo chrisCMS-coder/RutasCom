@@ -165,12 +165,14 @@ create policy "propios" on public.registros
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
--- v2 (octobre 2026) : date d'écriture donnée par le serveur et « la version la plus récente gagne ».
+-- v2 (octobre 2026, appliquée sur le projet préconfiguré le 2 octobre 2026) : date d'écriture donnée par le serveur et « la version la plus récente gagne ».
 -- * updated_at = heure du serveur : un téléphone qui renvoie tard une modif faite hors ligne (ou dont
 --   l'horloge est fausse) n'est plus ignoré par les autres appareils.
 -- * Une version plus ancienne que celle déjà enregistrée (data.updatedAt) ne l'écrase plus.
 create or replace function public.registros_antes_de_escribir() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path = ''
+as $$
 begin
   if tg_op = 'UPDATE' and coalesce(new.data->>'updatedAt', '') < coalesce(old.data->>'updatedAt', '') then
     return old; -- version plus ancienne : on garde celle du serveur

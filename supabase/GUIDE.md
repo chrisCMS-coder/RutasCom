@@ -4,7 +4,7 @@ L'appli est **déjà préconfigurée** avec un projet Supabase (URL et clé publ
 
 ## Avec le projet préconfiguré
 - **Comptes** : les inscriptions libres sont désactivées (Authentication → Sign In / Providers → « Allow new users to sign up » désactivé). Pour ajouter un utilisateur : Supabase → **Authentication** → **Users** → **Add user** (e-mail + mot de passe), puis se connecter dans l'appli.
-- **Mise à jour du SQL (octobre 2026, une seule fois)** : SQL Editor → New query → coller tout `setup.sql` → Run. Le script peut être relancé sans risque. Il ajoute la date d'écriture côté serveur et la règle « la version la plus récente gagne » : sans cette mise à jour, une modification faite hors ligne sur un appareil peut ne jamais arriver sur un autre.
+- **Mise à jour du SQL v2** : **déjà appliquée** sur le projet préconfiguré (2 octobre 2026). Elle ajoute la date d'écriture côté serveur et la règle « la version la plus récente gagne ». Pour un autre projet : SQL Editor → New query → coller tout `setup.sql` → Run (le script peut être relancé sans risque).
 - **Sans copie en ligne** : bouton « Usar sin copia en línea » sur l'écran de connexion.
 
 ## Utiliser son propre projet Supabase (optionnel) — 10 minutes
