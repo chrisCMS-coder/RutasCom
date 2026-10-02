@@ -40,7 +40,8 @@ const ROUTE = {
   /* «9:30–14:00 · 16:30–20:00» o «Cerrado» */
   textoHorario(horario, defecto, dow) {
     const v = ROUTE.ventanas(horario, defecto, dow);
-    return v.length ? v.map(w => `${U.fmtTime(w[0])}–${U.fmtTime(w[1])}`).join(' · ') : 'Cerrado';
+    const h = m => U.fmtTime(m).replace(/^0(\d)/, '$1');
+    return v.length ? v.map(w => `${h(w[0])}–${h(w[1])}`).join(' · ') : 'Cerrado';
   },
   /* Próximo instante >= t en que se puede empezar una visita de `dur` minutos sin pasarse del cierre
      (o null si ya no abre hoy). ventanas null = sin horario (siempre abierto); [] = cerrado ese día. */

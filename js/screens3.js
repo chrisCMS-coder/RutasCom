@@ -201,50 +201,73 @@ function sheetZona(z, clientes) {
 }
 
 /* ======================= EDITOR DE HORARIO ======================= */
-/* Tres modos: habitual (Ajustes) · igual todos los días (mañana + tarde, días cerrados) · por día (7 filas, «Copiar a todos») */
+/* Como en Google: siete líneas con el horario escrito; al tocar un día, una hoja con opciones hechas
+   (cerrado, mañana y tarde, solo mañana, solo tarde, continuo), sus horas y «Aplicar también a». */
 function editorHorario(horario) {
   const def = APP.ajustes.horario;
-  let h = JSON.parse(JSON.stringify(ROUTE.convertirHorario(horario || null, def)));
-  const franjasHab = d => ROUTE.ventanas(null, def, d);
+  const ORD = [1, 2, 3, 4, 5, 6, 0], NOM = { 0: 'Domingo', 1: 'Lunes', 2: 'Martes', 3: 'Miércoles', 4: 'Jueves', 5: 'Viernes', 6: 'Sábado' }, LET = { 0: 'D', 1: 'L', 2: 'M', 3: 'X', 4: 'J', 5: 'V', 6: 'S' };
   const aT = w => (w ? [U.fmtTime(w[0]), U.fmtTime(w[1])] : null);
-  // valores de partida para los modos que no se han usado todavía (a partir del horario habitual)
-  const lunes = franjasHab(1).length ? franjasHab(1) : franjasHab(2);
-  if (!h.m) { h.m = aT(lunes[0]) || ['09:30', '13:30']; h.t = aT(lunes[1]); h.cerrados = h.cerrados || [0, 1, 2, 3, 4, 5, 6].filter(d => !franjasHab(d).length); }
-  if (!h.dias) h.dias = [0, 1, 2, 3, 4, 5, 6].map(d => { const v = franjasHab(d); return { abierto: !!v.length, m: aT(v[0]) || ['09:30', '13:30'], t: aT(v[1]) }; });
-  const ORD = [1, 2, 3, 4, 5, 6, 0], LET = { 0: 'D', 1: 'L', 2: 'M', 3: 'X', 4: 'J', 5: 'V', 6: 'S' };
-  const hora = (id, v) => `<input type="time" step="300" id="${id}" value="${v || ''}">`;
-  const pintar = () => {
-    let cuerpo = '';
-    if (h.modo === 'habitual') cuerpo = `<div class="muted small">${ORD.map(d => `${ROUTE.DIAS[d]}: ${ROUTE.textoHorario(null, def, d)}`).join(' · ')}<br>(se cambia en Ajustes → Horario habitual)</div>`;
-    if (h.modo === 'igual') cuerpo = `<div class="col" style="gap:8px"><div class="rango"><span class="lbl">Mañana</span>${hora('hm0', h.m && h.m[0])}–${hora('hm1', h.m && h.m[1])}</div><div class="rango"><span class="lbl">Tarde</span>${hora('ht0', h.t && h.t[0])}–${hora('ht1', h.t && h.t[1])}</div><span class="muted small">Tarde vacía = horario continuo</span></div>
-      <div class="field"><label>Días abiertos</label><div class="dias">${ORD.map(d => `<button type="button" data-d="${d}" class="${(h.cerrados || []).includes(d) ? '' : 'on'}">${LET[d]}</button>`).join('')}</div></div>`;
-    if (h.modo === 'dia') cuerpo = ORD.map(d => { const x = h.dias[d]; return `<div class="hdia" data-dia="${d}"><div class="row between"><span class="nom">${ROUTE.DIAS[d]}</span><button type="button" class="switch" data-ab="${d}" role="switch" aria-checked="${!!x.abierto}" aria-label="Abierto el ${ROUTE.DIAS[d]}"></button></div><div class="franjas">${x.abierto ? `<div class="rango"><span class="lbl">Mañana</span>${hora('m0_' + d, x.m && x.m[0])}–${hora('m1_' + d, x.m && x.m[1])}</div><div class="rango"><span class="lbl">Tarde</span>${hora('t0_' + d, x.t && x.t[0])}–${hora('t1_' + d, x.t && x.t[1])}</div>` : '<span class="cerrado">Cerrado</span>'}</div></div>`; }).join('') + '<button type="button" class="btn sm outline" data-copiar style="align-self:flex-start;margin-top:8px">Copiar el lunes a todos los días abiertos</button>';
-    return `<div class="seg c3" id="hmodo">${[['habitual', 'Habitual'], ['igual', 'Igual cada día'], ['dia', 'Por día']].map(([k, l]) => `<button type="button" data-m="${k}" class="${h.modo === k ? 'on' : ''}">${l}</button>`).join('')}</div><div id="hcuerpo" class="col" style="gap:8px">${cuerpo}</div>`;
+  const habitual = !horario || horario.modo === 'habitual';
+  let personal = !habitual; // sin tocar nada, un cliente con horario habitual lo sigue teniendo (y sigue a Ajustes)
+  const desdeVentanas = d => { const v = ROUTE.ventanas(horario, def, d); return v.length ? { abierto: true, m: aT(v[0]), t: aT(v[1]) } : { abierto: false, m: null, t: null }; };
+  let dias = [0, 1, 2, 3, 4, 5, 6].map(desdeVentanas);
+  const hab = [0, 1, 2, 3, 4, 5, 6].map(d => ROUTE.ventanas(null, def, d));
+  const refM = aT((hab[2][0]) || [570, 810]) || ['09:30', '13:30'], refT = aT(hab[2][1]) || ['17:00', '20:00'];
+  const ventanasDe = d => { const x = dias[d]; return x.abierto ? [x.m, x.t].filter(Boolean) : []; };
+  const corta = h => String(h || '').replace(/^0(\d)/, '$1');
+  const texto = d => { const v = ventanasDe(d); return v.length ? v.map(f => `${corta(f[0])}–${corta(f[1])}`).join(' · ') : 'Cerrado'; };
+  // tipo de un día a partir de sus franjas
+  const tipo = d => {
+    const v = ventanasDe(d); if (!v.length) return 'cerrado'; if (v.length === 2) return 'partido';
+    const [a, b] = v[0].map(U.parseTime); if (b <= 15 * 60 + 30 && a < 12 * 60) return 'manana'; if (a >= 12 * 60) return 'tarde'; return 'continuo';
   };
   let root = null;
-  const v = id => root.querySelector('#' + id)?.value || '';
-  const leerPantalla = () => { // guarda lo escrito antes de repintar o cambiar de modo
-    if (!root) return;
-    if (h.modo === 'igual') { h.m = [v('hm0'), v('hm1')]; h.t = v('ht0') && v('ht1') ? [v('ht0'), v('ht1')] : null; }
-    if (h.modo === 'dia') ORD.forEach(d => { const x = h.dias[d]; if (x.abierto && root.querySelector('#m0_' + d)) { x.m = [v('m0_' + d), v('m1_' + d)]; x.t = v('t0_' + d) && v('t1_' + d) ? [v('t0_' + d), v('t1_' + d)] : null; } });
+  const pintar = () => `<div class="col" style="gap:0">${ORD.map(d => `<button type="button" class="item" data-dia="${d}" style="padding:12px 0"><div class="col grow"><div class="name" style="font-size:16px">${NOM[d]}</div></div><div class="right ${dias[d].abierto ? '' : 'muted'}" style="font-size:15px">${texto(d)}</div>${I.svg(I.back, 16).replace('M15 5l-7 7 7 7', 'M9 5l7 7-7 7')}</button>`).join('')}</div>
+    <div class="muted small">${personal ? '<a href="#" data-habitual>Volver al horario habitual de Ajustes</a>' : 'Es el horario habitual de Ajustes. Toca un día para cambiarlo solo para este cliente.'}</div>`;
+  const repintar = () => { root.innerHTML = pintar(); wire(root); };
+  const hoja = d => {
+    const x = dias[d]; let t = tipo(d);
+    const v = ventanasDe(d);
+    // horas de partida: las del día; si no tiene, las habituales
+    let m = (t === 'partido' || t === 'manana') ? v[0] : refM, ta = t === 'partido' ? v[1] : t === 'tarde' ? v[0] : refT, co = t === 'continuo' ? v[0] : [refM[0], refT[1]];
+    const OP = [['cerrado', 'Cerrado'], ['partido', 'Mañana y tarde'], ['manana', 'Solo mañana'], ['tarde', 'Solo tarde'], ['continuo', 'Horario continuo']];
+    const hora = (id, val) => `<input type="time" step="300" id="${id}" value="${val || ''}">`;
+    const s = UI.sheet(`<div class="grip"></div><h2>${NOM[d]}</h2>
+      <div class="col" style="gap:6px" id="hop">${OP.map(([k, l]) => `<label class="check" style="padding:10px 0"><input type="radio" name="hop" value="${k}" ${k === t ? 'checked' : ''}><span class="bold">${l}</span></label>`).join('')}</div>
+      <div class="col" style="gap:8px" id="hhoras"></div>
+      <div class="field"><label>Aplicar también a</label><div class="dias">${ORD.map(o => `<button type="button" data-o="${o}" ${o === d ? 'disabled style="opacity:.35"' : ''}>${LET[o]}</button>`).join('')}</div></div>
+      <button class="btn primary big" data-ok>Guardar</button>`);
+    const horas = s.querySelector('#hhoras');
+    const leerHoras = () => { const g = id => s.querySelector('#' + id)?.value; if (s.querySelector('#hm0')) m = [g('hm0'), g('hm1')]; if (s.querySelector('#ht0')) ta = [g('ht0'), g('ht1')]; if (s.querySelector('#hc0')) co = [g('hc0'), g('hc1')]; };
+    const verHoras = () => {
+      leerHoras();
+      horas.innerHTML = (t === 'partido' || t === 'manana' ? `<div class="rango"><span class="lbl">Mañana</span>${hora('hm0', m[0])}–${hora('hm1', m[1])}</div>` : '')
+        + (t === 'partido' || t === 'tarde' ? `<div class="rango"><span class="lbl">Tarde</span>${hora('ht0', ta[0])}–${hora('ht1', ta[1])}</div>` : '')
+        + (t === 'continuo' ? `<div class="rango"><span class="lbl">De</span>${hora('hc0', co[0])}–${hora('hc1', co[1])}</div>` : '');
+    };
+    verHoras();
+    s.querySelectorAll('#hop input').forEach(r => r.onchange = () => { t = r.value; verHoras(); });
+    const otros = new Set();
+    s.querySelectorAll('.dias [data-o]').forEach(b => b.onclick = () => { const o = +b.dataset.o; otros.has(o) ? otros.delete(o) : otros.add(o); b.classList.toggle('on', otros.has(o)); });
+    s.querySelector('[data-ok]').onclick = async () => {
+      leerHoras();
+      const ok = f => f && f[0] && f[1] && f[0] < f[1];
+      const nuevo = t === 'cerrado' ? { abierto: false, m: null, t: null } : t === 'partido' ? { abierto: true, m, t: ta } : t === 'manana' ? { abierto: true, m, t: null } : t === 'tarde' ? { abierto: true, m: null, t: ta } : { abierto: true, m: co, t: null };
+      if (nuevo.abierto && ![nuevo.m, nuevo.t].filter(Boolean).every(ok)) { UI.toast('Revisa las horas: la de cierre debe ser posterior a la de apertura'); return; }
+      if (t === 'partido' && m[1] > ta[0]) { UI.toast('La tarde debe empezar después de cerrar por la mañana'); return; }
+      for (const o of [d, ...otros]) dias[o] = JSON.parse(JSON.stringify(nuevo));
+      personal = true; await UI.closeSheet(); repintar();
+    };
   };
   const wire = el => {
     root = el;
-    const rep = () => { leerPantalla(); el.innerHTML = pintar(); wire(el); };
-    el.querySelectorAll('#hmodo button').forEach(b => b.onclick = () => { leerPantalla(); h.modo = b.dataset.m; el.innerHTML = pintar(); wire(el); });
-    el.querySelectorAll('.dias [data-d]').forEach(b => b.onclick = () => { const d = +b.dataset.d; h.cerrados = (h.cerrados || []).includes(d) ? h.cerrados.filter(x => x !== d) : [...(h.cerrados || []), d]; b.classList.toggle('on'); });
-    el.querySelectorAll('[data-ab]').forEach(b => b.onclick = () => { leerPantalla(); const x = h.dias[+b.dataset.ab]; x.abierto = !x.abierto; if (x.abierto && !x.m) x.m = ['09:30', '13:30']; rep(); });
-    el.querySelector('[data-copiar]')?.addEventListener('click', () => { leerPantalla(); const l = h.dias[1]; h.dias.forEach((x, d) => { if (d !== 1 && x.abierto) { x.m = l.m && [...l.m]; x.t = l.t && [...l.t]; } }); rep(); UI.toast('Horario del lunes copiado'); });
+    el.querySelectorAll('[data-dia]').forEach(b => b.onclick = () => hoja(+b.dataset.dia));
+    el.querySelector('[data-habitual]')?.addEventListener('click', e => { e.preventDefault(); personal = false; horario = null; dias = [0, 1, 2, 3, 4, 5, 6].map(desdeVentanas); repintar(); });
   };
   return {
-    html: () => `<div id="heditor" class="col" style="gap:10px">${pintar()}</div>`,
+    html: () => `<div id="heditor" class="col" style="gap:8px">${pintar()}</div>`,
     wire: el => wire(el.querySelector('#heditor')),
-    /* resultado en el modelo nuevo; null = habitual */
-    leer: () => {
-      leerPantalla();
-      if (h.modo === 'habitual') return null;
-      if (h.modo === 'igual') return { modo: 'igual', m: h.m && h.m[0] && h.m[1] ? h.m : null, t: h.t, cerrados: (h.cerrados || []).slice().sort() };
-      return { modo: 'dia', dias: h.dias.map(x => ({ abierto: !!x.abierto, m: x.abierto && x.m && x.m[0] && x.m[1] ? x.m : null, t: x.abierto ? x.t : null })) };
-    },
+    /* null = horario habitual (sigue a Ajustes); si no, el modelo «por día» */
+    leer: () => (personal ? { modo: 'dia', dias: dias.map(x => ({ abierto: !!x.abierto, m: x.abierto ? x.m : null, t: x.abierto ? x.t : null })) } : null),
   };
 }
