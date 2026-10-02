@@ -544,8 +544,8 @@ async function montarImport(tipo, cont, pantalla) {
     meses = esCli ? VENTAS.columnasMes(leido.headers) : [];
     const cabeceras = leido.headers.filter(h => !meses.some(m => m.h === h));
     map = XIO.sugerirMapeo(cabeceras, CAMPOS);
-    el.querySelector('#info').innerHTML = `${leido.rows.length} filas en «${U.esc(leido.hoja)}».${meses.length ? ` <b>Ventas: ${meses.length} columnas de meses detectadas (${U.mesLabel(meses[0].ym, true)} – ${U.mesLabel(meses[meses.length - 1].ym, true)}).</b>` : ''} Comprueba qué columna corresponde a cada dato:`;
-    el.querySelector('#campos').innerHTML = CAMPOS.map(([k, label]) => `<div class="field"><label for="m_${k}">${label}${['nombre', 'titulo'].includes(k) ? ' *' : ''}${k === 'codigo' ? ' (para reconocer al cliente en los próximos archivos)' : ''}</label><select id="m_${k}" data-k="${k}"><option value="">— no importar —</option>${cabeceras.map(h => `<option value="${U.esc(h)}" ${map[k] === h ? 'selected' : ''}>${U.esc(h)}</option>`).join('')}</select></div>`).join('');
+    el.querySelector('#info').innerHTML = `${leido.rows.length} fila${leido.rows.length === 1 ? '' : 's'} en «${U.esc(leido.hoja)}».${meses.length ? ` <b>Ventas: ${meses.length} columnas de meses detectadas (${U.mesLabel(meses[0].ym, true)} – ${U.mesLabel(meses[meses.length - 1].ym, true)}).</b>` : ''} Comprueba qué columna corresponde a cada dato:`;
+    el.querySelector('#campos').innerHTML = CAMPOS.map(([k, label]) => `<div class="field"><label for="m_${k}">${label}${['nombre', 'titulo'].includes(k) ? ' *' : ''}</label><select id="m_${k}" data-k="${k}"><option value="">— no importar —</option>${cabeceras.map(h => `<option value="${U.esc(h)}" ${map[k] === h ? 'selected' : ''}>${U.esc(h)}</option>`).join('')}</select></div>`).join('');
     el.querySelector('#campos').querySelectorAll('select').forEach(s => s.onchange = () => { if (s.value) map[s.dataset.k] = s.value; else delete map[s.dataset.k]; });
     el.querySelector('#mapeo').classList.remove('hidden');
   };
