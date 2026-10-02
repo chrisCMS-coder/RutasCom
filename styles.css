@@ -325,6 +325,8 @@ nav.tabs button { position: relative; }
 .leaflet-container a.leaflet-popup-close-button { color: var(--muted); }
 .leaflet-control-attribution { background: color-mix(in srgb, var(--bg) 80%, transparent) !important; color: var(--muted) !important; }
 .leaflet-control-attribution a { color: var(--muted) !important; }
+/* modo oscuro: las teselas claras de OSM con los colores invertidos (agua azul oscuro, calles grises) */
+.mapa-oscuro .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.95) contrast(.9) saturate(.6); }
 .popup .name { font-weight: 800; font-size: 15px; }
 .popup .meta { font-size: var(--fs-small); color: var(--muted); margin-bottom: 8px; }
 .popup .btn { height: 36px; font-size: 13px; padding: 0 12px; border-radius: 10px; }

@@ -33,7 +33,7 @@ Les sections marquées *Remarques de mise en œuvre* sont mes notes techniques :
 - Bon point de départ : `styles.css` définit déjà ses couleurs en variables sur `:root`. Il reste une dizaine de couleurs écrites en dur dans `styles.css` et quelques-unes directement dans le code des écrans (par exemple le fond de la carte « Próximo a vencer » dans la fiche) : à convertir.
 - Il faut aussi des variantes sombres pour les couleurs de statut (vert, ambre, rouge, bleu) et les fonds « soft ».
 - La barre d'état Android (`<meta name="theme-color">`) doit suivre le thème.
-- Les tuiles CartoDB demandent la mention « © OpenStreetMap © CARTO » sur la carte. Le changement de tuiles se fait à chaud, en écoutant le changement de thème du système.
+- Carte sombre : les mêmes tuiles OpenStreetMap, couleurs inversées en CSS. Les tuiles sombres CARTO prévues au départ demandent désormais une clé payante (constaté le 2 octobre : elles affichent « API KEY REQUIRED »). Le passage clair ↔ sombre se fait à chaud, en écoutant le changement de thème du système.
 
 ---
 
