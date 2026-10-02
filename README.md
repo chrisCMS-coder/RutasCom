@@ -9,7 +9,7 @@ Application mobile (PWA) de fiches clients et de tournées de visites commercial
 - **Mapa** : tous les clients en couleur, « clientes cerca de mí » (10 km autour de toi).
 - **Rutas** : création d'une tournée (départ/arrivée, horaire, sélection par zone ou « Rellenar mi día »), rendez-vous à heure fixe, ordre optimisé en respectant les horaires d'ouverture, recalcul en cours de journée, partage WhatsApp.
 - **Pedidos** : saisie de commande depuis la fiche (catalogue importé depuis Excel), bouton « Enviar Excel » qui génère le fichier et ouvre le partage Android (WhatsApp, Gmail, Drive…).
-- **Ajustes** : import clients Excel (avec correspondance des colonnes et placement sur la carte), import catalogue, export, copie de sauvegarde (fichier) et copie en ligne automatique (Supabase, optionnel), horaires par défaut, données de test.
+- **Ajustes** : import clients Excel (avec correspondance des colonnes et placement sur la carte), import catalogue, export, copie de sauvegarde (fichier) et copie en ligne automatique (Supabase, activée par défaut), code PIN, horaires par défaut, données de test.
 
 ## Mettre en ligne (une fois)
 
@@ -17,7 +17,7 @@ L'appli est un site statique : aucun serveur à gérer. Il faut juste l'héberge
 
 **GitHub Pages (recommandé, gratuit)**
 1. Créer un dépôt GitHub (par ex. `rutas-comerciales`) et y pousser ce dossier.
-2. Settings → Pages → Source : *Deploy from a branch*, branche `main`, dossier `/ (root)`.
+2. Settings → Pages → Source : **GitHub Actions**. Le workflow `.github/workflows/pages.yml` publie l'appli à chaque modification de la branche `main` (et seulement de `main` : le travail sur une autre branche ne change pas l'appli en ligne).
 3. L'appli est disponible sur `https://<ton-compte>.github.io/rutas-comerciales/`.
 
 **Netlify Drop (alternative)** : glisser le dossier sur https://app.netlify.com/drop.
@@ -30,9 +30,11 @@ L'appli est un site statique : aucun serveur à gérer. Il faut juste l'héberge
 
 ## Données
 
-- Tout est stocké sur le téléphone (IndexedDB). Rien ne part sur un serveur, sauf : les adresses envoyées au géocodeur (OpenStreetMap/Photon) et les coordonnées envoyées au calcul d'itinéraire (OSRM).
-- **Sauvegarde** : Ajustes → « Guardar copia » (fichier JSON à envoyer sur Drive/mail). L'appli rappelle quand la dernière copie date de plus de 7 jours.
-- **Copie en ligne automatique** : Ajustes → « Copia en línea » → coller l'URL et la clé publique d'un projet Supabase (gratuit), créer un compte e-mail/mot de passe. La table se crée avec le SQL affiché dans ce même écran. Ensuite chaque changement est copié automatiquement.
+- Tout est stocké sur le téléphone (IndexedDB), et l'appli fonctionne sans réseau.
+- **Copie en ligne (activée par défaut)** : l'appli est préconfigurée avec un projet Supabase. À la première ouverture, on se connecte avec un e-mail et un mot de passe ; ensuite **toutes les fiches, visites, commandes et tournées sont copiées sur ce projet Supabase** dès qu'il y a du réseau, et reviennent sur un nouveau téléphone après connexion. Les inscriptions libres sont désactivées : les comptes se créent dans Supabase (Authentication → Users → Add user). Voir `supabase/GUIDE.md`.
+- **Sans copie en ligne** : bouton « Usar sin copia en línea » sur l'écran de connexion. Les données restent alors uniquement sur le téléphone.
+- Autres envois sur Internet : les adresses envoyées au géocodeur (OpenStreetMap/Photon) et les coordonnées envoyées au calcul d'itinéraire (OSRM).
+- **Sauvegarde fichier** : Ajustes → « Guardar copia » (fichier JSON à envoyer sur Drive/mail). Sans copie en ligne, l'appli rappelle quand la dernière copie date de plus de 7 jours. Le fichier ne contient ni le PIN ni l'identité du compte.
 
 ## Fichiers Excel
 

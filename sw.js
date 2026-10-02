@@ -1,5 +1,5 @@
 /* Service worker: la app completa queda guardada en el móvil y abre sin conexión. */
-const VERSION = 'v1.3.6';
+const VERSION = 'v1.4.0';
 const SHELL = `rutas-shell-${VERSION}`;
 const TILES = 'rutas-tiles';
 const FILES = [
@@ -8,11 +8,16 @@ const FILES = [
   './vendor/images/marker-icon.png', './vendor/images/marker-icon-2x.png', './vendor/images/marker-shadow.png', './vendor/images/layers.png', './vendor/images/layers-2x.png',
   './js/util.js', './js/db.js', './js/geo.js', './js/route.js', './js/xlsxio.js', './js/sync.js', './js/ui.js', './js/screens.js', './js/screens2.js', './js/app.js',
   './data/demo-clientes.json', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png',
-  'https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap',
 ];
+const OPCIONALES = ['https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap'];
 
+// Instalación de todo o nada: si falta un archivo (red inestable), la versión nueva no se instala y sigue la
+// anterior completa; se reintenta en la próxima apertura. cache: 'reload' evita copiar archivos viejos de la caché HTTP.
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(SHELL).then(c => Promise.allSettled(FILES.map(f => c.add(new Request(f, { cache: 'reload' })).catch(() => null)))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(SHELL).then(async c => {
+    await c.addAll(FILES.map(f => new Request(f, { cache: 'reload' })));
+    await Promise.allSettled(OPCIONALES.map(f => c.add(f)));
+  }).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('rutas-shell-') && k !== SHELL).map(k => caches.delete(k)))).then(() => self.clients.claim()));
@@ -36,7 +41,7 @@ self.addEventListener('fetch', e => {
   e.respondWith(caches.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request).then(r => {
     if (r.ok && (url.origin === location.origin || url.hostname.includes('fonts.g'))) caches.open(SHELL).then(c => c.put(e.request, r.clone()));
     return r;
-  }).catch(() => caches.match('./index.html'))));
+  }).catch(() => (e.request.mode === 'navigate' ? caches.match('./index.html') : Response.error()))));
 });
 
 let trimming = false;

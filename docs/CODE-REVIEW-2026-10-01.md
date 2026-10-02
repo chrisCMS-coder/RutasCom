@@ -174,3 +174,58 @@ Certains constats seront corrigés naturellement en réalisant le brief, à cond
 - n° 21 → onglets de Pedidos et alerte 6 mois (1.1, 1.2) ;
 - n° 22 → suppression de la notion d'envoi (1.1) ;
 - n° 4 → mode sombre (on touche déjà au CSS de la carte et du verrou).
+
+---
+
+## Suivi des corrections (2 octobre 2026)
+
+Tous les constats sont corrigés sur la branche de travail, **sans publication** (rien n'arrive sur `main` ni sur l'appli en ligne tant que la pull request n'est pas fusionnée). Version de l'appli : 1.4.0.
+
+| # | Correction |
+|---|---|
+| 1 | Un jour fermé n'est plus « ouvert toute la journée » ; « lunes mañana cerrado » marche aussi sans pause de midi |
+| 2 | Les arrêts qui ne rentrent pas restent dans la tournée (marqués « no caben ») et sont replanifiés à chaque recalcul |
+| 3 | Revenir dans l'appli ne redessine plus un formulaire en cours (commande, fiche, nouvelle tournée, import) |
+| 4 | Les cartes ne passent plus au-dessus des fenêtres, des messages ni du verrou ; l'appli est inactive sous le verrou |
+| 5 | Le géocodage relit la fiche avant d'écrire, ne touche qu'à la position, et la date de modification avance |
+| 6 | Correspondance des colonnes globale et par mots entiers ; un code répété dans le fichier n'identifie plus un client |
+| 7, 8 | L'import lit les valeurs réelles des cellules : dates justes, ISBN et codes longs complets, prix « 1.234,50 » compris |
+| 9, 10 | Côté appli : la synchro relit 2 min en arrière. **Côté serveur : relancer `supabase/setup.sql` une fois dans Supabase** (date du serveur + « la version la plus récente gagne », testé sur Postgres) |
+| 11 | « Borrar todo » et « PIN olvidado » remettent la synchro à zéro et ferment la session : tout revient à la reconnexion |
+| 12 | Se connecter avec un autre compte alors qu'il reste des envois en attente demande une confirmation explicite ; le PIN de l'ancien compte est retiré |
+| 13 | Bouton « Usar sin copia en línea » sur l'écran de connexion ; README et guide Supabase mis à jour |
+| 14 | Après « Cerrar sesión », plus d'accès hors ligne sans identifiants |
+| 15 | « PIN olvidado » ferme aussi la session de la copia en línea |
+| 16 | La fenêtre « PIN olvidado » s'affiche au-dessus du verrou |
+| 17 | Mise à jour « tout ou rien » : si un fichier manque, l'ancienne version reste en place ; service worker enregistré dès l'ouverture |
+| 18 | Le réimport n'écrase plus taille, fréquence ni dernière visite par des valeurs par défaut ou plus anciennes |
+| 19 | Un réimport sans colonnes d'adresse ne remet plus les positions à zéro |
+| 20 | CSV en UTF-8 sans BOM lus correctement (repli Windows-1252 sinon) |
+| 21 | Heures et jours des commandes en heure locale (déjà corrigé sur `main`) ; date de dernière visite aussi |
+| 22 | Une commande « enviado » modifiée repasse en « pendiente de enviar » (provisoire : le brief supprime la notion d'envoi) |
+| 23, 24 | Le recalcul repart de l'heure réelle de la dernière visite et jamais d'avant maintenant pour la tournée du jour |
+| 25 | Nueva ruta : le point de départ tapé est cherché tout de suite, les distances ne partent plus de (0,0) |
+| 26 | Une coupure réseau ne marque plus une adresse « introuvable » ; « Buscar direcciones » relance aussi les introuvables |
+| 27 | Démarrage : attente de la session limitée à 2,5 s pour un utilisateur connu, message « cargando » |
+| 28 | Bouton retour cohérent après « Hora fija » et « Añadir cliente » |
+| 29 | Ajustes ne compte plus les fiches supprimées |
+| 30 | La copie de sauvegarde n'emporte plus le PIN ni l'identité du compte ; le catalogue restauré est synchronisé |
+| 31 | En-têtes avec retour à la ligne acceptés |
+| 32 | Hoy ignore les clients supprimés ; supprimer un client le retire des tournées d'aujourd'hui et à venir |
+| 33 | Une visite ou une commande enregistrée depuis la fiche coche l'arrêt de la tournée du jour |
+| 34 | Fréquence importée avec son unité (« 2 semanas » = 14 jours, « 2 veces al mes » = 15…) |
+| 35 | Les cartes sont détruites quand on quitte l'écran |
+| 36 | Message « se muestran X de N » sur les listes Clientes, Nueva ruta et Pedidos |
+| 37 | Ajouter un client déjà présent met à jour son heure fixe et sa durée, avec le bon message |
+| 38 | Plus de double envoi sur « Enviar Excel », « Guardar visita » et les autres boutons à icône |
+| 39 | Après une commande ouverte depuis la fiche, un seul « Atrás » suffit |
+| 40 | Une visite ne peut plus commencer si elle déborde sur la pause ou la fermeture |
+| 41 | Horaire client : la fiche montre l'horaire effectif et enregistre les écarts dans les deux sens |
+| 42 | « Guardar ubicación » exige d'avoir déplacé le point ou trouvé l'adresse |
+| 43 | Adresse modifiée sur un client placé à la main : l'appli demande s'il faut chercher la nouvelle |
+| 44 | Un import pendant une recherche d'adresses en cours est pris en compte ; message final juste (introuvables / restant à chercher) |
+| 45 | Ajustes : enregistrer le point de départ hors ligne affiche un message et ne bloque plus le bouton |
+
+Autres : texte « 200 librerías » corrigé, message d'erreur de synchro échappé, écouteurs de synchro enregistrés une seule fois. Inscriptions Supabase désactivées par le propriétaire du projet.
+
+**Vérification** : 37 contrôles automatiques dans Chromium (fuseau Europe/Madrid, réseau coupé vers Supabase et les cartes), 2000 tournées aléatoires pour le planificateur, SQL testé sur Postgres 16 (relance sans erreur, ancienne version refusée, date du serveur).

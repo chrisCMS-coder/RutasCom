@@ -232,16 +232,17 @@ nav.tabs button { position: relative; }
 .sheet h2 { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
 .toast {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) + 20px);
-  background: var(--fg); color: #fff; padding: 12px 18px; border-radius: 12px; font-weight: 700; font-size: 14px; z-index: 30;
+  background: var(--fg); color: #fff; padding: 12px 18px; border-radius: 12px; font-weight: 700; font-size: 14px; z-index: 70;
   max-width: calc(100% - 40px); text-align: center; box-shadow: var(--shadow);
 }
 
 /* Map */
-.map { width: 100%; background: #EDF1EC; }
+/* contexto de apilamiento propio: las capas internas de Leaflet (z-index 200-1000) no deben tapar hojas, avisos ni el bloqueo */
+.map { width: 100%; background: #EDF1EC; position: relative; z-index: 0; }
 .map.full { height: 100%; }
 .map.mini { height: 240px; border-radius: 20px; margin: 8px 16px 0; overflow: hidden; }
 .map-screen { display: flex; flex-direction: column; height: 100%; }
-.map-wrap { flex: 1; min-height: 0; position: relative; }
+.map-wrap { flex: 1; min-height: 0; position: relative; isolation: isolate; }
 .map-overlay { position: absolute; left: 12px; right: 12px; top: 12px; z-index: 500; display: flex; gap: 6px; flex-wrap: wrap; pointer-events: none; }
 .map-overlay > * { pointer-events: auto; }
 .map-fab { position: absolute; right: 12px; bottom: 12px; z-index: 500; width: 48px; height: 48px; border-radius: 50%; border: 0; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.2); display: flex; align-items: center; justify-content: center; }
@@ -291,6 +292,8 @@ nav.tabs button { position: relative; }
 .progress > div { height: 100%; background: var(--accent); width: 0; transition: width .2s; }
 
 /* PIN */
+/* hojas abiertas desde el bloqueo o el inicio de sesión (PIN olvidado, confirmaciones): por encima */
+.lock ~ .sheet-backdrop { z-index: 60; }
 .lock { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 20px; }
 .pinpad { width: 100%; max-width: 320px; display: flex; flex-direction: column; gap: 18px; align-items: stretch; }
 .pin-title { font-size: 22px; font-weight: 800; letter-spacing: -.01em; text-align: center; }
@@ -307,3 +310,6 @@ nav.tabs button { position: relative; }
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* mensaje mientras arranca la app (antes de la sesión y del PIN) */
+.arranque { min-height: 100vh; display: flex; align-items: center; justify-content: center; color: var(--muted); font-weight: 700; }

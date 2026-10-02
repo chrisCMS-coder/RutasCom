@@ -29,19 +29,23 @@ SCREENS.hoy = async () => {
     const dias = lastBackup ? U.daysSince(lastBackup.slice(0, 10)) : null;
     if (dias == null || dias >= 7) banners += `<div class="banner" data-go="ajustes">${I.svg(I.warn, 18)}<span>${dias == null ? 'Todavía no has hecho ninguna copia de seguridad.' : `Última copia de seguridad hace ${dias} días.`} Toca para hacerla.</span></div>`;
   }
+  if (SYNC.estado === 'sin-sesion') banners += `<div class="banner" data-login>${I.svg(I.cloud, 18)}<span>La copia en línea no tiene la sesión iniciada: los cambios no se están copiando. Toca para iniciar sesión.</span></div>`;
   if (SYNC.estado === 'ok' && SYNC.error) banners += `<div class="banner" data-go="ajustes">${I.svg(I.cloud, 18)}<span>${U.esc(SYNC.error)}. Los datos siguen guardados en el móvil.</span></div>`;
   if (sinCoord) banners += `<div class="banner info" data-go="ajustes">${I.svg(I.pin, 18)}<span>${sinCoord} cliente${sinCoord > 1 ? 's' : ''} sin ubicación en el mapa. Toca para resolverlo.</span></div>`;
 
   let rutaHtml;
-  const pend = ruta ? ruta.paradas.filter(p => !p.hecho) : [];
+  const plan = ruta ? ruta.paradas.filter(p => !p.noCabe) : []; // las que no caben no cuentan como visitas del día
+  const pend = plan.filter(p => !p.hecho && byId[p.clienteId]);
+  const noCabenHoy = ruta ? ruta.paradas.filter(p => p.noCabe && !p.hecho).length : 0;
   if (ruta && ruta.paradas.length) {
     const next = pend[0]; const nc = next && byId[next.clienteId];
     rutaHtml = `<div class="section"><div class="row between"><div class="section-title">Ruta de hoy</div><a href="#" data-go="ruta:${ruta.id}" class="bold small">Ver ruta</a></div>
       <div class="map mini" id="miniMap"></div>
-      <div class="muted small bold">${ruta.paradas.length} visitas · ${U.fmtKm(ruta.km)} · ${U.fmtDur(ruta.conduccion)} de conducción${ruta.estimado ? ' (estimado)' : ''}</div>
+      <div class="muted small bold">${plan.length} visitas · ${U.fmtKm(ruta.km)} · ${U.fmtDur(ruta.conduccion)} de conducción${ruta.estimado ? ' (estimado)' : ''}</div>
+      ${noCabenHoy ? `<div class="card rojo small bold" data-go="ruta:${ruta.id}">${noCabenHoy} cliente${noCabenHoy > 1 ? 's' : ''} no cabe${noCabenHoy > 1 ? 'n' : ''} en el horario. Toca para ver la ruta.</div>` : ''}
       ${nc ? `<div class="card accent"><div class="row between"><div class="col grow"><div class="small bold" style="letter-spacing:.05em;text-transform:uppercase;color:var(--accent)">Siguiente · ${U.fmtTime(next.inicio)}</div><div class="bold" style="font-size:17px">${U.esc(nc.nombre)}</div><div class="muted small">${U.esc(U.direccion(nc).full)}</div></div></div>
         <div class="btn-row" style="margin-top:12px"><a class="btn primary" href="${U.mapsUrl(nc)}" target="_blank" rel="noopener">${I.svg(I.nav, 18)} Iniciar visita</a><button class="btn" data-visita="${nc.id}" data-parada="${ruta.id}">Registrar</button></div></div>`
-        : `<div class="card"><div class="bold">Ruta completada</div><div class="muted small">Todas las visitas están registradas.</div></div>`}
+        : `<div class="card"><div class="bold">${noCabenHoy ? 'Sin más visitas dentro del horario' : 'Ruta completada'}</div><div class="muted small">${noCabenHoy ? 'Quedan clientes que no caben: amplía el límite o recalcula la ruta.' : 'Todas las visitas están registradas.'}</div></div>`}
     </div>`;
   } else {
     rutaHtml = `<div class="section"><div class="section-title">Ruta de hoy</div>
@@ -56,7 +60,7 @@ SCREENS.hoy = async () => {
     <div class="row wrap" style="gap:8px">
       <button class="chip" data-filtro="rojo">${UI.dot('rojo')} ${cont.rojo} fuera de plazo</button><button class="chip" data-filtro="ambar">${UI.dot('ambar')} ${cont.ambar} próximos</button>
       <button class="chip" data-filtro="verde">${UI.dot('verde')} ${cont.verde} al día</button>${cont.azul ? `<button class="chip" data-filtro="azul">${UI.dot('azul')} ${cont.azul} sin visitar</button>` : ''}</div></div>` : '';
-  const bienvenida = !clientes.length ? `<div class="section"><div class="card accent"><div class="bold" style="font-size:18px">Empezar</div><p class="muted small" style="margin:6px 0 12px">Importa tus clientes desde Excel o carga 200 librerías de Cataluña como datos de prueba (direcciones reales, datos comerciales inventados).</p>
+  const bienvenida = !clientes.length ? `<div class="section"><div class="card accent"><div class="bold" style="font-size:18px">Empezar</div><p class="muted small" style="margin:6px 0 12px">Importa tus clientes desde Excel o carga unas 160 librerías de Cataluña como datos de prueba (direcciones reales, datos comerciales inventados).</p>
     <div class="col" style="gap:8px"><button class="btn primary" data-go="importar">${I.svg(I.file, 18)} Importar clientes desde Excel</button><button class="btn" data-demo>Cargar datos de prueba</button></div></div></div>` : '';
 
   const el = screen(`<div class="hdr"><div class="hdr-row"><div class="col"><div class="eyebrow">${U.esc(U.fmtDateLong(d))}</div><h1>Hoy</h1></div><button class="iconbtn" data-go="ajustes" aria-label="Ajustes">${I.svg(I.gear, 22)}</button></div>
@@ -64,16 +68,18 @@ SCREENS.hoy = async () => {
     ${banners}${bienvenida}${clientes.length ? rutaHtml + pedHtml : ''}${carteraHtml}`);
   wireGo(el);
   el.querySelectorAll('[data-filtro]').forEach(b => b.onclick = () => APP.go('clientes', { filtro: b.dataset.filtro }));
-  el.querySelector('[data-demo]')?.addEventListener('click', async e => { e.target.disabled = true; UI.toast('Cargando datos de prueba…'); const n = await APP.cargarDemo(); UI.toast(`${n} clientes de prueba cargados`); });
+  el.querySelector('[data-login]')?.addEventListener('click', async () => { await APP.login(); APP.render(); });
+  el.querySelector('[data-demo]')?.addEventListener('click', async e => { e.currentTarget.disabled = true; UI.toast('Cargando datos de prueba…'); const n = await APP.cargarDemo(); UI.toast(`${n} clientes de prueba cargados`); });
   el.querySelector('[data-cerca]')?.addEventListener('click', () => APP.go('mapa', { cerca: true }));
   el.querySelectorAll('[data-visita]').forEach(b => b.onclick = () => sheetVisita(b.dataset.visita, { rutaId: b.dataset.parada }));
   el._afterMount = () => {
     const mm = el.querySelector('#miniMap');
     if (mm && ruta) {
       const map = UI.map(mm, { dragging: false, scrollWheelZoom: false, touchZoom: false, doubleClickZoom: false });
+      el._cleanup = () => map.remove();
       const pts = [];
       if (ruta.origen?.lat) { L.marker([ruta.origen.lat, ruta.origen.lng], { icon: UI.pin('origen') }).addTo(map); pts.push([ruta.origen.lat, ruta.origen.lng]); }
-      ruta.paradas.forEach((p, i) => { const c = byId[p.clienteId]; if (c && c.lat) { L.marker([c.lat, c.lng], { icon: UI.pin(p.hecho ? 'gris' : U.estado(c).key, i + 1) }).addTo(map); pts.push([c.lat, c.lng]); } });
+      plan.forEach((p, i) => { const c = byId[p.clienteId]; if (c && c.lat) { L.marker([c.lat, c.lng], { icon: UI.pin(p.hecho ? 'gris' : U.estado(c).key, i + 1) }).addTo(map); pts.push([c.lat, c.lng]); } });
       if (pts.length) { L.polyline(pts.concat(ruta.destino?.lat ? [[ruta.destino.lat, ruta.destino.lng]] : []), { color: '#17323F', weight: 3, opacity: .6, dashArray: '6 6' }).addTo(map); map.fitBounds(pts, { padding: [24, 24] }); }
       mm.onclick = () => APP.go('ruta', { id: ruta.id });
     }
@@ -109,6 +115,7 @@ SCREENS.clientes = async (params) => {
       if (st.filtro === 'todos' && k !== grupo) { grupo = k; html += `<div class="group-title">${titulos[k]} · ${n[k]}</div>`; }
       html += clienteItem(c);
     }
+    if (cs.length > 400) html += `<div class="empty">Se muestran 400 de ${cs.length} clientes · usa la búsqueda o los filtros para ver el resto</div>`;
     lista.innerHTML = html; wireGo(lista);
   };
   pintar();
@@ -179,18 +186,14 @@ async function sheetVisita(clienteId, { rutaId = null } = {}) {
   const ok = s.querySelector('[data-ok]');
   s.querySelectorAll('[data-r]').forEach(b => b.onclick = () => { resultado = b.dataset.r; s.querySelectorAll('[data-r]').forEach(x => x.classList.toggle('on', x === b)); ok.disabled = false; ok.textContent = resultado === 'pedido' ? 'Continuar con el pedido' : 'Guardar visita'; });
   ok.onclick = async () => {
+    if (ok.disabled) return;
+    ok.disabled = true; // evita guardar dos veces con un doble toque
     const nota = s.querySelector('#vn').value.trim();
     if (resultado === 'pedido') { APP.go('pedido', { id: 'nuevo-' + c.id, nota, rutaId }); return; }
     await DB.registrarVisita({ clienteId: c.id, resultado, nota });
-    if (rutaId) await marcarParadaHecha(rutaId, c.id);
-    UI.closeSheet(); UI.toast(resultado === 'ausente' ? 'Anotado: ausente' : 'Visita guardada');
+    await APP.marcarParadaHecha(rutaId, c.id); // sin rutaId: la ruta de hoy, si el cliente está en ella
+    await UI.closeSheet(); UI.toast(resultado === 'ausente' ? 'Anotado: ausente' : 'Visita guardada');
   };
-}
-async function marcarParadaHecha(rutaId, clienteId) {
-  const r = await db.rutas.get(rutaId); if (!r) return;
-  const p = r.paradas.find(p => p.clienteId === clienteId); if (!p || p.hecho) return;
-  p.hecho = true; const n = new Date(); p.hechoA = n.getHours() * 60 + n.getMinutes();
-  await DB.save('rutas', r);
 }
 
 /* ---------- añadir a ruta (hora fija opcional) ---------- */
@@ -207,19 +210,30 @@ async function sheetAnadirRuta(c) {
   s.querySelector('#sw').onclick = e => { fija = !fija; e.currentTarget.setAttribute('aria-checked', fija); s.querySelector('#hf').classList.toggle('hidden', !fija); s.querySelector('#hft').classList.toggle('hidden', !fija); };
   s.querySelectorAll('#dur button').forEach(b => b.onclick = () => { dur = +b.dataset.m; s.querySelectorAll('#dur button').forEach(x => x.classList.toggle('on', x === b)); });
   s.querySelector('[data-ok]').onclick = async e => {
-    e.target.disabled = true;
-    if (!c.lat) { UI.toast('Este cliente no tiene ubicación: sitúalo en el mapa primero'); e.target.disabled = false; return; }
-    const r = await APP.anadirARuta(c.id, { horaFija: fija ? s.querySelector('#ah').value : null, duracion: dur, fecha });
-    UI.closeSheet(); UI.toast(fecha === hoy ? 'Añadido a la ruta de hoy' : 'Añadido a la ruta del ' + U.fmtDate(fecha));
-    if (r.noCaben.includes(c.id)) UI.toast('Ojo: no cabe en el horario de la ruta', 4000);
+    const b = e.currentTarget; b.disabled = true;
+    if (!c.lat) { UI.toast('Este cliente no tiene ubicación: sitúalo en el mapa primero'); b.disabled = false; return; }
+    const { ruta, yaEstaba, sinCambios } = await APP.anadirARuta(c.id, { horaFija: fija ? s.querySelector('#ah').value : null, duracion: dur, fecha });
+    await UI.closeSheet();
+    const dia = fecha === hoy ? 'de hoy' : 'del ' + U.fmtDate(fecha);
+    if (sinCambios) UI.toast(`Ya está en la ruta ${dia} y la visita está hecha`);
+    else if ((ruta.noCaben || []).includes(c.id)) UI.toast(`${yaEstaba ? 'Actualizado en' : 'Añadido a'} la ruta ${dia}, pero no cabe en el horario`, 4000);
+    else UI.toast(yaEstaba ? `Ya estaba en la ruta ${dia}: hora y duración actualizadas` : `Añadido a la ruta ${dia}`);
   };
 }
 
 /* ======================= PEDIDO ======================= */
 SCREENS.pedido = async ({ id, nota, rutaId }) => {
   let p, c, nuevo = false;
-  if (String(id).startsWith('nuevo-')) { nuevo = true; c = await DB.cliente(id.slice(6)); p = { id: U.uuid(), clienteId: c.id, fecha: U.now(), lineas: [], nota: '', enviado: false }; }
-  else { p = await db.pedidos.get(id); if (!p) return screen(topbar('Pedido') + '<div class="empty">Pedido no encontrado</div>', { nav: false }); c = await DB.cliente(p.clienteId); }
+  if (String(id).startsWith('nuevo-')) {
+    nuevo = true; c = await DB.cliente(id.slice(6));
+    if (!c || c.deleted) { const v = screen(topbar('Nuevo pedido') + '<div class="empty">Cliente no encontrado</div>', { nav: false }); wireBack(v); return v; }
+    p = { id: U.uuid(), clienteId: c.id, fecha: U.now(), lineas: [], nota: '', enviado: false };
+  } else {
+    p = await db.pedidos.get(id);
+    if (!p || p.deleted) { const v = screen(topbar('Pedido') + '<div class="empty">Pedido no encontrado</div>', { nav: false }); wireBack(v); return v; }
+    c = (await DB.cliente(p.clienteId)) || { id: p.clienteId, nombre: '(cliente eliminado)', localidad: '' };
+  }
+  const original = JSON.stringify({ lineas: p.lineas, nota: p.nota || '' });
   const catalogo = await DB.catalogo();
   const catN = catalogo.map(k => ({ k, n: U.norm(k.titulo + ' ' + k.ref + ' ' + (k.autor || '') + ' ' + (k.editorial || '')) }));
   const el = screen(topbar(nuevo ? 'Nuevo pedido' : 'Pedido', nuevo ? '' : `<button class="iconbtn" data-del aria-label="Eliminar">${I.svg(I.trash, 20)}</button>`) + `
@@ -254,10 +268,17 @@ SCREENS.pedido = async ({ id, nota, rutaId }) => {
   el.querySelector('[data-libre]').onclick = async () => { const t = await UI.prompt('Línea libre', { placeholder: 'Título o descripción', ok: 'Añadir' }); if (t && t.trim()) addLinea({ ref: '', titulo: t.trim(), cantidad: 1, precio: null }); };
   el.querySelector('[data-ok]').onclick = async e => {
     if (!p.lineas.length) { UI.toast('Añade al menos un artículo'); return; }
-    e.target.disabled = true; p.nota = el.querySelector('#pn').value.trim();
+    const b = e.currentTarget; if (b.disabled) return; b.disabled = true;
+    p.nota = el.querySelector('#pn').value.trim();
+    // un pedido ya enviado que se modifica vuelve a «pendiente» para que salga en el próximo Excel
+    const reabierto = !nuevo && p.enviado && JSON.stringify({ lineas: p.lineas, nota: p.nota }) !== original;
+    if (reabierto) { p.enviado = false; p.modificadoAt = U.now(); }
     await DB.save('pedidos', p);
-    if (nuevo) { await DB.registrarVisita({ clienteId: c.id, resultado: 'pedido', nota: nota || '', pedidoId: p.id }); if (rutaId) await marcarParadaHecha(rutaId, c.id); }
-    UI.toast('Pedido guardado'); APP.go('ficha', { id: c.id }, true);
+    if (nuevo) { await DB.registrarVisita({ clienteId: c.id, resultado: 'pedido', nota: nota || '', pedidoId: p.id }); await APP.marcarParadaHecha(rutaId, c.id); }
+    UI.toast(reabierto ? 'Pedido modificado: vuelve a «pendiente de enviar»' : 'Pedido guardado', reabierto ? 4000 : 2600);
+    // abierto desde la ficha del mismo cliente: se vuelve a ella (sin duplicarla en el historial)
+    const prev = history.state && history.state.prev;
+    if (prev && prev.name === 'ficha' && prev.params && prev.params.id === c.id) APP.back(); else APP.go('ficha', { id: c.id }, true);
   };
   el.querySelector('[data-del]')?.addEventListener('click', async () => { if (await UI.confirm('¿Eliminar este pedido?', '', { ok: 'Eliminar', danger: true })) { await DB.softDelete('pedidos', p.id); APP.back(); } });
   return el;
@@ -290,19 +311,19 @@ SCREENS.pedidos = async () => {
     ${st.vista === 'rango' ? `<div class="section" style="padding-top:4px"><div class="field-row"><div class="field"><label for="pdd">Desde</label><input type="date" id="pdd" value="${st.desde}" max="${hoy}"></div><div class="field"><label for="pdh">Hasta</label><input type="date" id="pdh" value="${st.hasta}"></div></div></div>` : ''}
     ${lista.length ? `<div class="section" style="padding-top:4px"><div class="muted small bold">${lista.length} pedido${lista.length === 1 ? '' : 's'} · ${unidades} uds${importe ? ' · ' + importe.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' }) : ''}</div></div>` : ''}
     ${lista.length ? `<div class="section" style="padding-top:8px"><button class="btn primary big" data-enviar>${I.svg(I.share, 20)} Enviar Excel · ${lista.length} pedido${lista.length === 1 ? '' : 's'}</button><div class="muted small center">Se abre el menú de compartir del móvil (WhatsApp, Gmail, Drive…)</div></div>` : ''}
-    <div class="list">${html || '<div class="empty">No hay pedidos aquí</div>'}</div>`);
+    <div class="list">${html || '<div class="empty">No hay pedidos aquí</div>'}${lista.length > 300 ? `<div class="empty">Se muestran 300 de ${lista.length} pedidos · elige un rango de fechas para ver el resto (el Excel los incluye todos)</div>` : ''}</div>`);
   wireGo(el);
   el.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { st.vista = b.dataset.v; APP.render(); });
   requestAnimationFrame(() => { const on = el.querySelector('.chips .chip.on'); if (on) on.parentElement.scrollLeft = on.offsetLeft - 20; });
   [['pdd', 'desde'], ['pdh', 'hasta']].forEach(([id, k]) => el.querySelector('#' + id)?.addEventListener('change', e => { if (e.target.value) { st[k] = e.target.value; APP.render(); } }));
   el.querySelector('[data-enviar]')?.addEventListener('click', async e => {
-    e.target.disabled = true;
+    const btn = e.currentTarget; if (btn.disabled) return; btn.disabled = true;
     // se exporta exactamente la selección del filtro, en orden cronológico
     const sel = [...lista].sort((a, b) => a.fecha.localeCompare(b.fecha));
     const data = XIO.pedidosXlsx(sel, byId);
     const sufijo = st.vista === 'pendientes' ? 'pendientes_' + hoy : st.vista === 'todos' ? 'todos_' + hoy : r[0] === r[1] ? r[0] : `${r[0]}_a_${r[1]}`;
     const res = await XIO.compartir(data, `pedidos_${sufijo}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Pedidos ' + sufijo.replace(/_/g, ' '));
-    e.target.disabled = false;
+    btn.disabled = false;
     if (res === 'cancelado') return;
     const sinEnviar = sel.filter(p => !p.enviado);
     if (sinEnviar.length && await UI.confirm('¿Marcar como enviados?', `${sinEnviar.length} pedido${sinEnviar.length === 1 ? '' : 's'} pasará${sinEnviar.length === 1 ? '' : 'n'} a «enviado». Seguirán en el historial.`, { ok: 'Sí, marcar' })) {
@@ -323,6 +344,7 @@ SCREENS.mapa = async (params) => {
   el.classList.add('flush'); el.style.paddingBottom = 'calc(var(--nav-h) + env(safe-area-inset-bottom, 0px))';
   el._afterMount = async () => {
     const map = UI.map(el.querySelector('#bigMap'));
+    el._cleanup = () => map.remove();
     const grupo = L.layerGroup().addTo(map);
     const pintar = () => {
       grupo.clearLayers();

@@ -59,7 +59,7 @@ const UI = {
         setTimeout(() => { if (UI._popResolve === res) { UI._popResolve = null; UI._ignorePop = false; res(); } }, 500);
       });
     }
-    if (APP._dirty) { APP._dirty = false; APP.render(); }
+    if (APP._dirty) { APP._dirty = false; APP.refrescar(); }
     return p;
   },
   /* Confirmación en hoja (la app no puede usar confirm()) */

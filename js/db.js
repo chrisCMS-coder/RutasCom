@@ -68,7 +68,7 @@ const DB = {
     if (resultado !== 'ausente') {
       const c = await db.clientes.get(clienteId);
       if (c) {
-        const f = v.fecha.slice(0, 10);
+        const f = U.isoDate(new Date(v.fecha)); // día local (v.fecha está en UTC)
         if (!c.ultimaVisita || c.ultimaVisita < f) { c.ultimaVisita = f; await DB.save('clientes', c); }
       }
     }
@@ -76,10 +76,12 @@ const DB = {
   },
 
   /* ---------- copia de seguridad ---------- */
+  /* Ajustes propios de este móvil o de la cuenta: no viajan en la copia (el PIN, la identidad y el punto de sincronización) */
+  AJUSTES_LOCALES: ['supabase', 'session', 'pin', 'syncUid', 'syncDesde', 'syncUltimo', 'syncEmail', 'syncSalida', 'lastBackup'],
   async exportAll() {
     const out = { app: 'rutas-comerciales', version: 1, exportedAt: U.now() };
     for (const t of ['clientes', 'visitas', 'pedidos', 'catalogo', 'rutas', 'ajustes']) out[t] = await db[t].toArray();
-    out.ajustes = out.ajustes.filter(a => !['supabase', 'session'].includes(a.key));
+    out.ajustes = out.ajustes.filter(a => !DB.AJUSTES_LOCALES.includes(a.key));
     return out;
   },
   async importAll(data, { replace = false } = {}) {
@@ -93,17 +95,21 @@ const DB = {
           if (!cur || !cur.updatedAt || (r.updatedAt || '') >= cur.updatedAt) { await db[t].put(r); await db.outbox.put({ kind: t, id: r.id, at: U.now() }); }
         }
       }
-      if (data.catalogo && data.catalogo.length) { if (replace) await db.catalogo.clear(); await db.catalogo.bulkPut(data.catalogo); }
-      for (const a of (data.ajustes || [])) if (!['supabase', 'session'].includes(a.key)) await db.ajustes.put(a);
+      if (data.catalogo && data.catalogo.length) { if (replace) await db.catalogo.clear(); await db.catalogo.bulkPut(data.catalogo); await db.outbox.bulkPut(data.catalogo.map(k => ({ kind: 'catalogo', id: k.ref, at: U.now() }))); }
+      for (const a of (data.ajustes || [])) if (!DB.AJUSTES_LOCALES.includes(a.key)) await db.ajustes.put(a);
     });
     DB.changed('all');
   },
   async wipe() {
     await Promise.all(['clientes', 'visitas', 'pedidos', 'catalogo', 'rutas', 'outbox'].map(t => db[t].clear()));
+    // sin datos locales, la próxima sincronización debe bajarlo todo otra vez
+    await DB.set('syncDesde', null); await DB.set('syncUltimo', null);
+    if (typeof SYNC !== 'undefined') SYNC.ultimo = null;
     DB.changed('all');
   },
-  async counts() {
-    const [c, v, p, k, r] = await Promise.all([db.clientes.count(), db.visitas.count(), db.pedidos.count(), db.catalogo.count(), db.rutas.count()]);
+  async counts() { // sin contar lo borrado (los borrados son lógicos)
+    const vivos = t => db[t].filter(r => !r.deleted).count();
+    const [c, v, p, k, r] = await Promise.all([vivos('clientes'), vivos('visitas'), vivos('pedidos'), db.catalogo.count(), vivos('rutas')]);
     return { clientes: c, visitas: v, pedidos: p, catalogo: k, rutas: r };
   },
 };

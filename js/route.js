@@ -11,16 +11,18 @@ const ROUTE = {
     let v = [];
     if (h.cierraMediodia !== false && mdDe > abre && mdA < cierra) v = [[abre, mdDe], [mdA, cierra]];
     else v = [[abre, cierra]];
-    if (dow === 1 && h.lunesCerrado) v = v.filter(w => w[0] >= 12 * 60).map(w => [Math.max(w[0], mdA), w[1]]).filter(w => w[1] > w[0]);
+    // lunes por la mañana cerrado: solo abre por la tarde (también si no cierra al mediodía)
+    if (dow === 1 && h.lunesCerrado) v = v.map(w => [Math.max(w[0], mdA), w[1]]).filter(w => w[1] > w[0]);
     if (h.lunesTodoCerrado && dow === 1) return [];
     return v;
   },
-  /* Próximo instante >= t en que el cliente está abierto (o null si ya no abre hoy) */
-  proximaApertura(ventanas, t) {
-    if (!ventanas || !ventanas.length) return t; // sin horario: siempre abierto
+  /* Próximo instante >= t en que se puede empezar una visita de `dur` minutos sin pasarse del cierre
+     (o null si ya no abre hoy). ventanas null = sin horario (siempre abierto); [] = cerrado ese día. */
+  proximaApertura(ventanas, t, dur = 0) {
+    if (!ventanas) return t;
     for (const [a, b] of ventanas) {
-      if (t >= a && t < b) return t;
-      if (t < a) return a;
+      const ini = Math.max(t, a);
+      if (ini + dur <= b) return ini;
     }
     return null;
   },
@@ -46,7 +48,7 @@ const ROUTE = {
         let ini = lleg;
         if (s.horaFija != null) { if (lleg > s.horaFija + 10) ok = false; ini = Math.max(lleg, s.horaFija); }
         else {
-          const ap = ROUTE.proximaApertura(s.ventanas, lleg);
+          const ap = ROUTE.proximaApertura(s.ventanas, lleg, s.duracion || 30);
           if (ap == null) ok = false; else ini = ap;
         }
         espera += ini - lleg;
@@ -75,7 +77,7 @@ const ROUTE = {
         for (const i of libres) {
           const s = stops[i];
           const lleg = t + dur[cur][idx(i)];
-          const ini = ROUTE.proximaApertura(s.ventanas, lleg);
+          const ini = ROUTE.proximaApertura(s.ventanas, lleg, s.duracion || 30);
           if (ini == null) continue;
           const fin = ini + (s.duracion || 30);
           const sig = anc == null ? DEST : idx(anc);
@@ -137,7 +139,7 @@ const ROUTE = {
       km += dist[cur][idx(i)]; cond += viaje;
       const lleg = t + viaje; let ini = lleg;
       if (s.horaFija != null) { if (lleg > s.horaFija + 10) ok = false; ini = Math.max(lleg, s.horaFija); }
-      else { const ap = ROUTE.proximaApertura(s.ventanas, lleg); if (ap == null) ok = false; else ini = ap; }
+      else { const ap = ROUTE.proximaApertura(s.ventanas, lleg, s.duracion || 30); if (ap == null) ok = false; else ini = ap; }
       espera += ini - lleg;
       const fin = ini + (s.duracion || 30);
       plan.push({ i, llegada: lleg, inicio: ini, fin, viaje });
