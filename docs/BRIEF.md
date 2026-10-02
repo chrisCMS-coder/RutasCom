@@ -33,7 +33,7 @@ Les sections marquées *Remarques de mise en œuvre* sont mes notes techniques :
 - Bon point de départ : `styles.css` définit déjà ses couleurs en variables sur `:root`. Il reste une dizaine de couleurs écrites en dur dans `styles.css` et quelques-unes directement dans le code des écrans (par exemple le fond de la carte « Próximo a vencer » dans la fiche) : à convertir.
 - Il faut aussi des variantes sombres pour les couleurs de statut (vert, ambre, rouge, bleu) et les fonds « soft ».
 - La barre d'état Android (`<meta name="theme-color">`) doit suivre le thème.
-- Les tuiles CartoDB demandent la mention « © OpenStreetMap © CARTO » sur la carte. Le changement de tuiles se fait à chaud, en écoutant le changement de thème du système.
+- Carte sombre : les mêmes tuiles OpenStreetMap, couleurs inversées en CSS. Les tuiles sombres CARTO prévues au départ demandent désormais une clé payante (constaté le 2 octobre : elles affichent « API KEY REQUIRED »). Le passage clair ↔ sombre se fait à chaud, en écoutant le changement de thème du système.
 
 ---
 
@@ -227,8 +227,8 @@ L'ERP n'est pas connectable : tout passe par l'import Excel, réimportable quand
 ## 4 — Zones et graphique
 
 ### 4.1 Zones géographiques (Catalogne uniquement)
-- **Comarca remplie automatiquement d'après le code postal**, grâce à une table intégrée à l'appli (fonctionne hors ligne).
-- **Zones personnalisées** dans Ajustes : on regroupe des comarcas ou des localités (ex. « Zona Norte » = Maresme + Vallès Oriental).
+- **Région remplie automatiquement d'après le code postal**, grâce à une table intégrée à l'appli (fonctionne hors ligne) : code postal → comarca → l'une des 8 régions de la Generalitat (Àrea metropolitana, Comarques Gironines, Camp de Tarragona, Terres de l'Ebre, Ponent, Comarques Centrals, Alt Pirineu i Aran, Penedès). Le filtre « Zona » propose les régions ; les comarcas n’y figurent plus (décision du 2 octobre).
+- **Zones personnalisées** dans Ajustes : on regroupe des régions ou des localités (ex. « Lunes » = Penedès + Vic).
 - **Filtre par zone** dans Clientes, Mapa et Nueva ruta ; option de couleur par zone sur la carte.
 - Pas de regroupement automatique par GPS (zones instables et peu parlantes).
 

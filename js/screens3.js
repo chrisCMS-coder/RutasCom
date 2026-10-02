@@ -3,22 +3,24 @@
 /* ======================= ZONAS ======================= */
 const ZONAS = {
   lista() { return APP.ajustes.zonas || []; },
-  de(c) { const com = U.comarca(c); return ZONAS.lista().filter(z => (z.comarcas || []).includes(com) || (z.localidades || []).some(l => U.norm(l) === U.norm(c.localidad))); },
-  /* valor de filtro: '' | 'z:<id>' (zona propia) | 'c:<comarca>' | 'l:<localidad>' */
+  /* zonas propias: regiones y localidades sueltas (las comarcas solo en zonas antiguas) */
+  de(c) { const reg = U.region(c), com = U.comarca(c); return ZONAS.lista().filter(z => (z.regiones || []).includes(reg) || (z.comarcas || []).includes(com) || (z.localidades || []).some(l => U.norm(l) === U.norm(c.localidad))); },
+  /* valor de filtro: '' | 'z:<id>' (zona propia) | 'r:<región>' | 'l:<localidad>' ('c:<comarca>' de versiones anteriores) */
   cumple(c, v) {
     if (!v) return true;
     const [t, x] = [v.slice(0, 1), v.slice(2)];
     if (t === 'z') return ZONAS.de(c).some(z => z.id === x);
+    if (t === 'r') return U.region(c) === x;
     if (t === 'c') return U.comarca(c) === x;
     if (t === 'l') return c.localidad === x;
     return true;
   },
   opciones(clientes, valor, { localidades = false, todas = 'Todas las zonas' } = {}) {
-    const coms = [...new Set(clientes.map(U.comarca).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const regs = Object.keys(U.REGIONES).filter(r => clientes.some(c => U.region(c) === r));
     const locs = localidades ? [...new Set(clientes.map(c => c.localidad).filter(Boolean))].sort((a, b) => a.localeCompare(b)) : [];
     const op = (v, l) => `<option value="${U.esc(v)}" ${v === valor ? 'selected' : ''}>${U.esc(l)}</option>`;
     return op('', todas) + (ZONAS.lista().length ? `<optgroup label="Mis zonas">${ZONAS.lista().map(z => op('z:' + z.id, z.nombre)).join('')}</optgroup>` : '')
-      + (coms.length ? `<optgroup label="Comarcas">${coms.map(x => op('c:' + x, x)).join('')}</optgroup>` : '')
+      + (regs.length ? `<optgroup label="Regiones">${regs.map(x => op('r:' + x, x)).join('')}</optgroup>` : '')
       + (locs.length ? `<optgroup label="Localidades">${locs.map(x => op('l:' + x, x)).join('')}</optgroup>` : '');
   },
   /* color de zona por orden fijo (--z1..--z8); sin zona: gris */
@@ -173,8 +175,8 @@ SCREENS.zonas = async () => {
   const clientes = await DB.clientes();
   const zonas = ZONAS.lista();
   const cuenta = z => clientes.filter(c => ZONAS.de(c).includes(z)).length;
-  const el = screen(topbar('Zonas') + `<div class="section" style="padding-top:0"><div class="muted small">Agrupa comarcas o localidades en tus propias zonas (por ejemplo «Lunes · Maresme»). La comarca de cada cliente sale sola de su código postal.</div></div>
-    <div class="list">${zonas.map((z, i) => `<button class="item" data-z="${z.id}"><span class="dot" style="background:var(--z${i + 1})"></span><div class="col grow"><div class="name">${U.esc(z.nombre)}</div><div class="meta">${U.esc([...(z.comarcas || []), ...(z.localidades || [])].join(', ') || 'vacía')}</div></div><div class="right muted">${cuenta(z)}</div></button>`).join('') || '<div class="empty">Todavía no hay zonas</div>'}</div>
+  const el = screen(topbar('Zonas') + `<div class="section" style="padding-top:0"><div class="muted small">Agrupa regiones o localidades en tus propias zonas (por ejemplo «Lunes · Mataró y Badalona»). La región de cada cliente sale sola de su código postal.</div></div>
+    <div class="list">${zonas.map((z, i) => `<button class="item" data-z="${z.id}"><span class="dot" style="background:var(--z${i + 1})"></span><div class="col grow"><div class="name">${U.esc(z.nombre)}</div><div class="meta">${U.esc([...(z.regiones || []), ...(z.comarcas || []), ...(z.localidades || [])].join(', ') || 'vacía')}</div></div><div class="right muted">${cuenta(z)}</div></button>`).join('') || '<div class="empty">Todavía no hay zonas</div>'}</div>
     <div class="section"><button class="btn primary big" data-nueva>${I.svg(I.plus, 20)} Nueva zona</button></div>`, { nav: false });
   wireBack(el);
   el.querySelector('[data-nueva]').onclick = () => sheetZona(null, clientes);
@@ -182,14 +184,15 @@ SCREENS.zonas = async () => {
   return el;
 };
 function sheetZona(z, clientes) {
-  const nueva = !z; z = z ? JSON.parse(JSON.stringify(z)) : { id: U.uuid(), nombre: '', comarcas: [], localidades: [] };
-  const coms = [...new Set(clientes.map(U.comarca).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const nueva = !z; z = z ? JSON.parse(JSON.stringify(z)) : { id: U.uuid(), nombre: '', regiones: [], localidades: [] };
+  z.regiones = z.regiones || [];
+  const regs = Object.keys(U.REGIONES);
   const s = UI.sheet(`<div class="grip"></div><h2>${nueva ? 'Nueva zona' : 'Zona'}</h2>
     <div class="field"><label for="zn">Nombre</label><input id="zn" value="${U.esc(z.nombre)}" placeholder="Ej. Zona Norte"></div>
-    <div class="field"><label>Comarcas (con clientes)</label><div class="row wrap" style="gap:6px" id="zc">${coms.map(c => `<button type="button" class="chip ${z.comarcas.includes(c) ? 'on' : ''}" data-c="${U.esc(c)}">${U.esc(c)}</button>`).join('') || '<span class="muted small">Sin clientes todavía</span>'}</div></div>
+    <div class="field"><label>Regiones</label><div class="row wrap" style="gap:6px" id="zc">${regs.map(r => `<button type="button" class="chip ${z.regiones.includes(r) ? 'on' : ''}" data-c="${U.esc(r)}">${U.esc(r)}</button>`).join('')}</div>${z.comarcas?.length ? `<div class="muted small">También incluye las comarcas ${U.esc(z.comarcas.join(', '))} (versión anterior).</div>` : ''}</div>
     <div class="field"><label for="zl">Localidades sueltas (separadas por comas)</label><input id="zl" value="${U.esc(z.localidades.join(', '))}" placeholder="Ej. Mataró, Vic"></div>
     <div class="btn-row">${nueva ? '' : '<button class="btn danger" data-del>Eliminar</button>'}<button class="btn primary" data-ok>Guardar</button></div>`);
-  s.querySelectorAll('#zc [data-c]').forEach(b => b.onclick = () => { const c = b.dataset.c; z.comarcas = z.comarcas.includes(c) ? z.comarcas.filter(x => x !== c) : [...z.comarcas, c]; b.classList.toggle('on'); });
+  s.querySelectorAll('#zc [data-c]').forEach(b => b.onclick = () => { const r = b.dataset.c; z.regiones = z.regiones.includes(r) ? z.regiones.filter(x => x !== r) : [...z.regiones, r]; b.classList.toggle('on'); });
   s.querySelector('[data-ok]').onclick = async () => {
     z.nombre = s.querySelector('#zn').value.trim(); if (!z.nombre) { UI.toast('Ponle un nombre'); return; }
     z.localidades = s.querySelector('#zl').value.split(',').map(x => x.trim()).filter(Boolean);

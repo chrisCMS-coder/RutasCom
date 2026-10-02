@@ -129,16 +129,12 @@ const UI = {
   },
 
   /* ---------- mapas (Leaflet + OpenStreetMap) ---------- */
-  /* Mapas vivos: cambian de teselas al cambiar el tema (claras OSM / oscuras CARTO Dark Matter) sin recargar */
+  /* Mapas vivos: siempre teselas OSM; en modo oscuro se invierten sus colores con CSS (CARTO pide ahora una clave de pago) */
   _mapas: new Set(),
   oscuro() { const t = document.documentElement.dataset.theme; return t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches; },
   _teselas(m) {
-    const osc = UI.oscuro(); if (m._teselasOsc === osc) return;
-    if (m._capa) m.removeLayer(m._capa);
-    m._capa = osc
-      ? L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap © CARTO' })
-      : L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' });
-    m._capa.addTo(m); m._teselasOsc = osc;
+    if (!m._capa) m._capa = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(m);
+    m.getContainer().classList.toggle('mapa-oscuro', UI.oscuro());
   },
   map(container, opts = {}) {
     const m = L.map(container, { zoomControl: false, attributionControl: true, ...opts });
