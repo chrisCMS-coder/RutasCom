@@ -4,7 +4,7 @@
 
 ## Ordre de réalisation
 0. **Mode sombre** : à faire en premier, pour que tous les écrans suivants soient construits directement avec le thème.
-1. **Commandes et terrain** : commandes, historique et alerte 6 mois, horaires, WhatsApp, message pré-visite.
+1. **Commandes et terrain** : commandes, historique et alerte 6 mois, horaires, WhatsApp, message pré-visite, organisation de la tournée.
 2. **Tâches.**
 3. **Ventes** : données de ventes (dès réception des en-têtes de l'Excel).
 4. **Zones et graphique.**
@@ -37,7 +37,7 @@ Les sections marquées *Remarques de mise en œuvre* sont mes notes techniques :
 
 ---
 
-## 1 — Commandes, horaires, WhatsApp, message pré-visite
+## 1 — Commandes, horaires, WhatsApp, message pré-visite, tournée
 
 ### 1.1 Commandes : enregistrer, pas envoyer
 **Aujourd'hui :** l'appli suit l'envoi (« Pendiente / Enviado », onglet « Pendientes de enviar », « ¿Marcar como enviados? »), et toucher une commande l'ouvre directement en modification.
@@ -112,6 +112,29 @@ Les sections marquées *Remarques de mise en œuvre* sont mes notes techniques :
 - **« Avisar a todos » :** le téléphone ne permet pas d'ouvrir 8 conversations WhatsApp d'un coup, chaque ouverture fait quitter l'appli. Déroulé proposé : le bouton ouvre le premier client ; au retour dans l'appli, un bandeau « Siguiente : Marta · Avisar » propose le suivant en un tap. Pour 8 arrêts, cela fait 8 × (Avisar → Enviar dans WhatsApp → retour), ce qui tient en moins d'une minute.
 - **Variables :** `{hora}` vient de l'heure prévue de l'arrêt dans la tournée calculée ; le créneau approximatif l'encadre (par exemple ±1 h, arrondi à l'heure). `{dia}` est écrit dans la langue du client (« jueves 9 » / « dijous 9 »). Chaque modèle existe donc en ES et en CA. Si le contact n'a pas de prénom, le message commence par « Hola, ».
 - **Recalcul de tournée :** si l'heure d'un arrêt déjà « avisado » bouge de plus de 30 min, l'arrêt l'indique (« hora cambiada desde el aviso ») et propose le modèle relance.
+
+### 1.6 Organisation de la tournée
+
+**a) Temps de trajet jusqu'à la voiture**
+- Ajouter **10 min** à chaque trajet entre deux rendez-vous (sortir, rejoindre la voiture, se garer à l'arrivée).
+- Réglable dans Ajustes (« Tiempo hasta el coche », 10 min par défaut) et modifiable pour une tournée donnée (en centre-ville piéton on peut mettre 0).
+- *Proposé :* pas appliqué au départ de la maison ni au retour final (on part de la voiture et on y arrive).
+- *Remarque :* l'estimation sans réseau ajoute déjà 3 min par trajet ; ces 3 min sont remplacées par ce réglage pour ne pas compter deux fois.
+
+**b) Recalcul automatique quand on valide un rendez-vous**
+- Quand on enregistre une visite (« Registrar », ou une commande depuis la tournée), les horaires des visites restantes sont **recalculés à partir de l'heure de validation**.
+- Recalcul **dans le même ordre** (seules les heures bougent), pour ne pas changer la tournée sous les yeux du commercial. Réorganiser complètement reste le bouton « Recalcular ».
+- Si le retard fait sortir une visite de l'horaire, ou met en danger un rendez-vous à heure fixe, un message le dit tout de suite (« Vas con 25 min de retraso: la cita de las 12:00 está en riesgo »), avec le bouton « Reorganizar ».
+- Lien avec le message pré-visite (1.5) : un arrêt déjà « avisado » dont l'heure bouge de plus de 30 min le signale, comme prévu.
+- *Remarque :* la base existe déjà depuis les corrections du 2 octobre (le recalcul repart de l'heure réelle de la dernière visite) ; il manque seulement le déclenchement automatique.
+
+**c) Journée en deux tranches (pause déjeuner)**
+- Option **« Pausa »** dans la tournée, avec une valeur par défaut dans Ajustes : par exemple 13:30–15:00.
+- Pendant la pause : aucune visite et aucun trajet ne sont planifiés ; la tournée reprend à la fin de la pause depuis l'endroit où l'on se trouve.
+- La pause apparaît dans la frise de la tournée (« Comida · 13:30–15:00 ») et dans le texte partagé.
+- *Remarques :*
+  - beaucoup de librairies ferment déjà à midi : la pause tombe souvent dans un créneau où il n'y a rien à faire, ce qui est le cas idéal ;
+  - techniquement, la pause se traite comme un rendez-vous fixe « sans adresse » (pas de trajet pour y aller), ce que le planificateur sait déjà gérer pour les rendez-vous à heure fixe.
 
 ---
 
@@ -234,3 +257,5 @@ L'ERP n'est pas connectable : tout passe par l'import Excel, réimportable quand
 4. **Recalcul annuel :** déclenché au premier import contenant décembre (proposé en 3.3) ?
 5. **Alerte 6 mois :** délai réglable dans Ajustes (proposé) ?
 6. **Tâches :** « Mañana » présélectionné quand la tâche est créée depuis une fiche ou après une visite (proposé) ?
+7. **Temps jusqu'à la voiture :** pas compté au départ de la maison ni au retour final (proposé) ?
+8. **Pause déjeuner :** horaire fixe (ex. 13:30–15:00, proposé) ou souple (« 1 h entre 13:00 et 15:00 », placée au meilleur moment par l'appli) ?
