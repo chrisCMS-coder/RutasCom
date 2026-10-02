@@ -39,7 +39,7 @@ SCREENS.nuevaRuta = async () => {
   const distO = c => U.haversineKm(st.origen, c);
   const pintar = () => {
     const q = U.norm(st.q);
-    let cs = clientes.filter(c => (!q || U.norm(c.nombre + ' ' + c.localidad + ' ' + c.cp + ' ' + U.comarca(c)).includes(q)) && ZONAS.cumple(c, st.loc));
+    let cs = clientes.filter(c => (!q || U.norm(c.nombre + ' ' + c.localidad + ' ' + c.cp + ' ' + U.comarca(c) + ' ' + U.region(c)).includes(q)) && ZONAS.cumple(c, st.loc));
     if (st.filtro === 'rojo') cs = cs.filter(c => U.estado(c).key === 'rojo'); if (st.filtro === 'ambar') cs = cs.filter(c => ['rojo', 'ambar'].includes(U.estado(c).key)); if (st.filtro === 'sel') cs = cs.filter(c => st.sel.has(c.id));
     if (st.filtro === 'prospecto' || st.filtro === 'inactivo') cs = cs.filter(c => U.estado(c).key === st.filtro);
     cs.sort((x, y) => distO(x) - distO(y));
@@ -238,7 +238,7 @@ SCREENS.editarCliente = async ({ id }) => {
     <div class="field"><label for="cn">Nombre *</label><input id="cn" value="${U.esc(c.nombre)}" required></div>
     <div class="field-row"><div class="field" style="flex:3"><label for="cc">Calle</label><input id="cc" value="${U.esc(c.calle)}"></div><div class="field"><label for="cnu">Nº</label><input id="cnu" value="${U.esc(c.numero)}"></div></div>
     <div class="field-row"><div class="field"><label for="ccp">CP</label><input id="ccp" value="${U.esc(c.cp)}" inputmode="numeric"></div><div class="field" style="flex:2"><label for="cl">Localidad</label><input id="cl" value="${U.esc(c.localidad)}"></div></div>
-    <div class="muted small" id="ccom">${U.comarca(c) ? 'Comarca: ' + U.esc(U.comarca(c)) : ''}</div>
+    <div class="muted small" id="ccom">${U.esc(U.textoRegion(c))}</div>
     <div class="field"><label for="cco">Contacto</label><input id="cco" value="${U.esc(c.contacto || '')}" placeholder="Nombre de la persona (se usa en el mensaje: «Hola Marta…»)"></div>
     <div class="field-row"><div class="field"><label for="ct">Teléfono fijo</label><input id="ct" value="${U.esc(c.telefono || '')}" inputmode="tel"></div><div class="field"><label for="cmo">Móvil</label><input id="cmo" value="${U.esc(c.movil || '')}" inputmode="tel" placeholder="6XX XXX XXX"></div></div>
     ${sw('cwa', c.whatsapp !== false, 'Tiene WhatsApp', 'Si no, los avisos se mandan por SMS')}
@@ -260,7 +260,7 @@ SCREENS.editarCliente = async ({ id }) => {
   el.querySelectorAll('#cid button').forEach(b => b.onclick = () => { c.idioma = b.dataset.l; el.querySelectorAll('#cid button').forEach(x => x.classList.toggle('on', x === b)); });
   el.querySelectorAll('#ctam button').forEach(b => b.onclick = () => { c.tamano = b.dataset.t; c.tamanoOrigen = 'manual'; el.querySelectorAll('#ctam button').forEach(x => x.classList.toggle('on', x === b)); });
   el.querySelectorAll('#cfr button').forEach(b => b.onclick = () => { c.frecuenciaDias = +b.dataset.d; el.querySelectorAll('#cfr button').forEach(x => x.classList.toggle('on', x === b)); });
-  const verComarca = () => { const k = U.comarca({ localidad: el.querySelector('#cl').value, cp: el.querySelector('#ccp').value }); el.querySelector('#ccom').textContent = k ? 'Comarca: ' + k : ''; };
+  const verComarca = () => { el.querySelector('#ccom').textContent = U.textoRegion({ localidad: el.querySelector('#cl').value, cp: el.querySelector('#ccp').value }); };
   el.querySelector('#cl').addEventListener('input', verComarca); el.querySelector('#ccp').addEventListener('input', verComarca);
   el.querySelector('#f').onsubmit = async e => {
     e.preventDefault();

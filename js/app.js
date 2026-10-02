@@ -1,6 +1,6 @@
 /* Arranque, navegación y lógica compartida (rutas, geocodificación en cola). */
 const APP = {
-  VERSION: '1.5.1',
+  VERSION: '1.5.2',
   state: { name: 'hoy', params: {} },
   TABS: [['hoy', 'Hoy', I.home], ['clientes', 'Clientes', I.users], ['mapa', 'Mapa', I.map], ['rutas', 'Rutas', I.route], ['pedidos', 'Pedidos', I.box]],
   ajustes: {},

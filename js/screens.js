@@ -118,7 +118,7 @@ SCREENS.clientes = async (params) => {
   const FILTROS = [['todos', 'Todos'], ['rojo', 'Fuera de plazo'], ['ambar', 'Próximos'], ['verde', 'Al día'], ['azul', 'Sin visitar'], ['sinpedidos', `Sin pedidos ${meses} m`], ['prospecto', 'Prospectos'], ['inactivo', 'Inactivos'], ['grande', 'Grandes']];
   const cadenas = [...new Set(clientes.map(c => c.codAgrup).filter(Boolean))].sort();
   const el = screen(`<div class="hdr"><div class="hdr-row"><h1>Clientes</h1><div class="muted bold" id="ncli">${clientes.length}</div></div></div>
-    <div class="search">${I.svg(I.search, 20)}<input id="q" type="search" placeholder="Buscar nombre, localidad, CP o comarca" value="${U.esc(st.q)}" autocomplete="off"></div>
+    <div class="search">${I.svg(I.search, 20)}<input id="q" type="search" placeholder="Buscar nombre, localidad, CP o región" value="${U.esc(st.q)}" autocomplete="off"></div>
     <div class="row" style="gap:8px;padding:8px 20px 0"><select class="sel grow" id="cz" aria-label="Zona">${ZONAS.opciones(clientes, st.zona)}</select>${cadenas.length ? `<select class="sel grow" id="cc" aria-label="Cadena"><option value="">Todas las cadenas</option><option value="__si" ${st.cadena === '__si' ? 'selected' : ''}>Solo cadenas</option>${cadenas.map(k => `<option ${k === st.cadena ? 'selected' : ''}>${U.esc(k)}</option>`).join('')}</select>` : ''}</div>
     <div class="chips">${FILTROS.map(([k, l]) => `<button class="chip ${st.filtro === k ? 'on' : ''}" data-f="${k}">${ESTADOS[k] ? UI.dot(k) : ''}${l}</button>`).join('')}</div>
     <div class="list" id="lista"></div>
@@ -126,7 +126,7 @@ SCREENS.clientes = async (params) => {
   const lista = el.querySelector('#lista');
   const pintar = () => {
     const q = U.norm(st.q);
-    let cs = clientes.filter(c => (!q || U.norm(c.nombre + ' ' + c.localidad + ' ' + c.cp + ' ' + (c.contacto || '') + ' ' + U.comarca(c) + ' ' + (c.codAgrup || '')).includes(q)) && ZONAS.cumple(c, st.zona) && (!st.cadena || (st.cadena === '__si' ? !!c.codAgrup : c.codAgrup === st.cadena)));
+    let cs = clientes.filter(c => (!q || U.norm(c.nombre + ' ' + c.localidad + ' ' + c.cp + ' ' + (c.contacto || '') + ' ' + U.comarca(c) + ' ' + U.region(c) + ' ' + (c.codAgrup || '')).includes(q)) && ZONAS.cumple(c, st.zona) && (!st.cadena || (st.cadena === '__si' ? !!c.codAgrup : c.codAgrup === st.cadena)));
     if (ESTADOS[st.filtro]) cs = cs.filter(c => U.estado(c).key === st.filtro);
     if (st.filtro === 'grande') cs = cs.filter(c => c.tamano === 'grande');
     if (st.filtro === 'sinpedidos') cs = cs.filter(c => alertaSinPedidos(c, ultimos)).sort((a, b) => diasSinPedido(b, ultimos) - diasSinPedido(a, ultimos));
@@ -169,7 +169,7 @@ SCREENS.ficha = async ({ id }) => {
   const horarioHoy = ROUTE.textoHorario(c.horario, APP.ajustes.horario, dow);
   const semana = [1, 2, 3, 4, 5, 6, 0].map(d => `<div class="row between small"><span class="bold">${ROUTE.DIAS[d]}</span><span class="muted">${ROUTE.textoHorario(c.horario, APP.ajustes.horario, d)}</span></div>`).join('');
   const dSin = diasSinPedido(c, ultimos), ultPed = ultimos.get(c.id);
-  const comarca = U.comarca(c);
+  const region = U.region(c);
   const movil = U.movil(c), tel = c.telefono || movil;
   const ventas = VENTAS.tieneDatos(c) ? VENTAS.comparativa(c.ventas) : null;
   const pedidoFila = p => `<button class="item" data-go="pedido:${p.id}"><div class="col grow"><div class="name" style="font-size:16px">${U.fmtDate(p.fecha, { day: 'numeric', month: 'short', year: 'numeric' })} · ${udsPedido(p)} uds${totalPedido(p) ? ' · ' + U.fmtEur(totalPedido(p), 2) : ''}</div><div class="meta">${(p.lineas || []).length} líneas${p.modificadoAt ? ' · modificado el ' + U.fmtDate(p.modificadoAt) : ''}${p.nota ? ' · ' + U.esc(p.nota.slice(0, 40)) : ''}</div></div>${I.svg(I.back, 16).replace('M15 5l-7 7 7 7', 'M9 5l7 7-7 7')}</button>`;
@@ -178,7 +178,7 @@ SCREENS.ficha = async ({ id }) => {
       <div class="card ${colorCard}"><div class="row">${UI.dot(e.key)}<div class="col"><div class="bold" style="font-size:17px">${frase}</div><div class="small bold" style="opacity:.85">${sub}</div></div></div></div>
       ${alertaSinPedidos(c, ultimos) ? `<div class="card ambar small bold">Sin pedidos desde hace ${Math.round(dSin / 30.4)} meses${ultPed ? '' : ' (ninguno registrado en la app)'}</div>` : ''}
       <div class="muted small bold">${ultPed ? `Último pedido ${haceTexto(U.daysSince(U.isoDate(new Date(ultPed))))} · ${U.fmtDate(ultPed, { day: 'numeric', month: 'short', year: 'numeric' })}` : 'Sin pedidos registrados en la app'}</div></div>
-    <div class="section"><div class="row" style="align-items:flex-start">${I.svg(I.pin, 20)}<div class="col grow"><div class="bold">${U.esc(dir.l1) || '<span class="muted">Sin dirección</span>'}</div><div class="muted small">${U.esc(dir.l2)}${comarca ? ' · ' + U.esc(comarca) : ''}</div>${!c.lat ? `<button class="btn sm outline" data-go="ubicacion:${c.id}" style="margin-top:6px;align-self:flex-start">Situar en el mapa</button>` : (c.geocodeStatus === 'aprox' ? `<button class="btn sm outline" data-go="ubicacion:${c.id}" style="margin-top:6px;align-self:flex-start">Ubicación aproximada · corregir</button>` : '')}</div></div>
+    <div class="section"><div class="row" style="align-items:flex-start">${I.svg(I.pin, 20)}<div class="col grow"><div class="bold">${U.esc(dir.l1) || '<span class="muted">Sin dirección</span>'}</div><div class="muted small">${U.esc(dir.l2)}${region ? ' · ' + U.esc(region) : ''}</div>${!c.lat ? `<button class="btn sm outline" data-go="ubicacion:${c.id}" style="margin-top:6px;align-self:flex-start">Situar en el mapa</button>` : (c.geocodeStatus === 'aprox' ? `<button class="btn sm outline" data-go="ubicacion:${c.id}" style="margin-top:6px;align-self:flex-start">Ubicación aproximada · corregir</button>` : '')}</div></div>
       ${tel || c.contacto ? `<button class="row" data-tel style="background:none;border:0;padding:0;text-align:left;color:inherit">${I.svg(I.phone, 20)}<div class="col grow"><span class="bold" style="color:var(--accent)">${U.esc([c.telefono, movil && movil !== c.telefono ? movil : ''].filter(Boolean).join(' · ') || 'Sin teléfono')}</span><span class="muted small">${U.esc(c.contacto || '')}${U.canal(c) ? (c.contacto ? ' · ' : '') + (U.canal(c) === 'whatsapp' ? 'WhatsApp' : 'SMS') : ''}</span></div></button>` : ''}
       <details><summary class="row" style="list-style:none;cursor:pointer">${I.svg(I.clock, 20)}<span class="small"><b>Hoy:</b> ${U.esc(horarioHoy)}</span><span class="muted small">· semana</span></summary><div class="col" style="gap:4px;padding:8px 0 0 32px">${semana}</div></details></div>
     <div class="section"><div class="row between"><div class="section-title">Tareas${tareas.length ? ' · ' + tareas.length : ''}</div><button class="btn sm outline" data-tarea>+ Tarea</button></div>

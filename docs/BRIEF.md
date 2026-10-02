@@ -227,8 +227,8 @@ L'ERP n'est pas connectable : tout passe par l'import Excel, réimportable quand
 ## 4 — Zones et graphique
 
 ### 4.1 Zones géographiques (Catalogne uniquement)
-- **Comarca remplie automatiquement d'après le code postal**, grâce à une table intégrée à l'appli (fonctionne hors ligne).
-- **Zones personnalisées** dans Ajustes : on regroupe des comarcas ou des localités (ex. « Zona Norte » = Maresme + Vallès Oriental).
+- **Région remplie automatiquement d'après le code postal**, grâce à une table intégrée à l'appli (fonctionne hors ligne) : code postal → comarca → l'une des 8 régions de la Generalitat (Àrea metropolitana, Comarques Gironines, Camp de Tarragona, Terres de l'Ebre, Ponent, Comarques Centrals, Alt Pirineu i Aran, Penedès). Le filtre « Zona » propose les régions ; les comarcas n’y figurent plus (décision du 2 octobre).
+- **Zones personnalisées** dans Ajustes : on regroupe des régions ou des localités (ex. « Lunes » = Penedès + Vic).
 - **Filtre par zone** dans Clientes, Mapa et Nueva ruta ; option de couleur par zone sur la carte.
 - Pas de regroupement automatique par GPS (zones instables et peu parlantes).
 

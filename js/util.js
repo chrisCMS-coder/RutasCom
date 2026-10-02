@@ -166,4 +166,21 @@ const U = {
     const k = COMARCAS.cp[String(c.cp || '').padStart(5, '0')];
     return k != null ? COMARCAS.nombres[k] : '';
   },
+  /* Región: los 8 ámbitos territoriales de la Generalitat (vegueries), deducidos de la comarca */
+  REGIONES: {
+    'Àrea metropolitana': ['Barcelonès', 'Baix Llobregat', 'Maresme', 'Vallès Occidental', 'Vallès Oriental'],
+    'Comarques Gironines': ['Alt Empordà', 'Baix Empordà', 'Garrotxa', 'Gironès', "Pla de l'Estany", 'Ripollès', 'Selva'],
+    'Camp de Tarragona': ['Alt Camp', 'Baix Camp', 'Conca de Barberà', 'Priorat', 'Tarragonès'],
+    "Terres de l'Ebre": ['Baix Ebre', 'Montsià', "Ribera d'Ebre", 'Terra Alta'],
+    'Ponent': ['Garrigues', 'Noguera', "Pla d'Urgell", 'Segarra', 'Segrià', 'Urgell'],
+    'Comarques Centrals': ['Bages', 'Berguedà', 'Lluçanès', 'Moianès', 'Osona', 'Solsonès'],
+    'Alt Pirineu i Aran': ['Alt Urgell', 'Alta Ribagorça', 'Aran', 'Cerdanya', 'Pallars Jussà', 'Pallars Sobirà'],
+    'Penedès': ['Alt Penedès', 'Anoia', 'Baix Penedès', 'Garraf'],
+  },
+  region(c) {
+    if (!U._regionDe) { U._regionDe = {}; for (const [r, cs] of Object.entries(U.REGIONES)) for (const x of cs) U._regionDe[U.norm(x)] = r; }
+    const com = U.comarca(c);
+    return (com && U._regionDe[U.norm(com)]) || '';
+  },
+  textoRegion(c) { const r = U.region(c), com = U.comarca(c); return r ? `Región: ${r} (${com})` : com ? `Comarca: ${com}` : ''; },
 };
