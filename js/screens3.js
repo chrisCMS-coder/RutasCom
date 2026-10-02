@@ -233,7 +233,7 @@ function editorHorario(horario) {
     const OP = [['cerrado', 'Cerrado'], ['partido', 'Mañana y tarde'], ['manana', 'Solo mañana'], ['tarde', 'Solo tarde'], ['continuo', 'Horario continuo']];
     const hora = (id, val) => `<input type="time" step="300" id="${id}" value="${val || ''}">`;
     const s = UI.sheet(`<div class="grip"></div><h2>${NOM[d]}</h2>
-      <div class="col" style="gap:6px" id="hop">${OP.map(([k, l]) => `<label class="check" style="padding:10px 0"><input type="radio" name="hop" value="${k}" ${k === t ? 'checked' : ''}><span class="bold">${l}</span></label>`).join('')}</div>
+      <div class="field"><select id="hop" aria-label="Tipo de horario">${OP.map(([k, l]) => `<option value="${k}" ${k === t ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="col" style="gap:8px" id="hhoras"></div>
       <div class="field"><label>Aplicar también a</label><div class="dias">${ORD.map(o => `<button type="button" data-o="${o}" ${o === d ? 'disabled style="opacity:.35"' : ''}>${LET[o]}</button>`).join('')}</div></div>
       <button class="btn primary big" data-ok>Guardar</button>`);
@@ -246,7 +246,7 @@ function editorHorario(horario) {
         + (t === 'continuo' ? `<div class="rango"><span class="lbl">De</span>${hora('hc0', co[0])}–${hora('hc1', co[1])}</div>` : '');
     };
     verHoras();
-    s.querySelectorAll('#hop input').forEach(r => r.onchange = () => { t = r.value; verHoras(); });
+    s.querySelector('#hop').onchange = e => { t = e.target.value; verHoras(); };
     const otros = new Set();
     s.querySelectorAll('.dias [data-o]').forEach(b => b.onclick = () => { const o = +b.dataset.o; otros.has(o) ? otros.delete(o) : otros.add(o); b.classList.toggle('on', otros.has(o)); });
     s.querySelector('[data-ok]').onclick = async () => {
