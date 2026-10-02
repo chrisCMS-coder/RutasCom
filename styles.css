@@ -431,8 +431,36 @@ nav.tabs button { position: relative; }
 .kpi .d { font-size: var(--fs-small); font-weight: 700; color: var(--muted); }
 
 /* ---------- avisar (mensaje previo) ---------- */
+.barra-fija { position: fixed; left: 0; right: 0; bottom: 0; z-index: 3; padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-top: 1px solid var(--line); }
 .aviso-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; padding: 10px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: center; }
 .btn.ok { background: var(--verde-soft); color: var(--verde-text); }
 .tl-row.pausa .tl-body { background: var(--bg3); border-radius: 12px; padding: 8px 12px; margin-top: -6px; }
 select { background: var(--bg); color: var(--fg); }
 .sel { height: 44px; border-radius: 12px; border: 1px solid var(--line2); padding: 0 10px; font-weight: 700; background: var(--bg); color: var(--fg); min-width: 0; }
+
+/* ---------- ordenador y tableta horizontal: menú a la izquierda, contenido centrado ---------- */
+@media (min-width: 900px) {
+  :root { --nav-h: 0px; --rail: 96px; --col: 760px; }
+  #app:has(> nav.tabs) { padding-left: var(--rail); }
+  .screen:not(.flush) { padding-inline: max(0px, calc((100% - var(--col)) / 2)); }
+  nav.tabs {
+    top: 0; right: auto; width: var(--rail); height: auto; padding: 16px 0;
+    border-top: 0; border-right: 1px solid var(--line);
+    grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; gap: 4px;
+  }
+  nav.tabs button { border-radius: 16px; margin: 0 10px; }
+  nav.tabs button.on { background: var(--bg2); }
+  .fab { right: calc(max(0px, (100vw - var(--rail) - var(--col)) / 2) + 20px); bottom: 24px; }
+  .aviso-bar, .barra-fija { left: max(0px, calc((100vw - var(--col)) / 2)); right: max(0px, calc((100vw - var(--col)) / 2)); border-inline: 1px solid var(--line); border-radius: 16px 16px 0 0; }
+  .chips { flex-wrap: wrap; overflow-x: visible; }
+  body:has(nav.tabs) .toast { left: calc(50% + var(--rail) / 2); }
+  /* hojas: ventana centrada en lugar de subir desde abajo */
+  .sheet-backdrop { align-items: center; padding: 24px; }
+  .sheet { border-radius: 24px; max-height: 88vh; padding-bottom: 20px; }
+  .sheet .grip { display: none; }
+}
+@media (min-width: 900px) and (hover: hover) {
+  nav.tabs button:hover:not(.on) { background: var(--bg3); }
+  .list > button.item, .list > a.item { margin-inline: -10px; padding-inline: 10px; width: calc(100% + 20px); border-radius: 12px; }
+  button.item:hover, a.item:hover { background: var(--bg2); }
+}

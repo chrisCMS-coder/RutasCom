@@ -193,7 +193,7 @@ SCREENS.ficha = async ({ id }) => {
       ${visitas.length ? visitas.slice(0, 8).map(v => `<div class="row" style="align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--line)"><div class="muted small bold" style="width:64px;flex-shrink:0">${U.fmtDate(v.fecha)}</div><div class="col grow"><div class="bold small">${RES[v.resultado] || v.resultado}${v.pedidoId ? ' · <a href="#" data-go="pedido:' + v.pedidoId + '">ver pedido</a>' : ''}</div>${v.nota ? `<div class="small" style="white-space:pre-wrap">${U.esc(v.nota)}</div>` : ''}</div></div>`).join('') : '<div class="muted small">Todavía sin visitas registradas.</div>'}</div>
     ${pedidos.length ? `<div class="section"><div class="section-title">Pedidos · ${pedidos.length}</div>${(st.todosPedidos ? pedidos : pedidos.slice(0, 5)).map(pedidoFila).join('')}${pedidos.length > 5 ? `<button class="btn outline" data-todos>${st.todosPedidos ? 'Ver solo los últimos' : `Ver todos (${pedidos.length})`}</button>` : ''}</div>` : ''}
     <div style="height:160px"></div>
-    <div style="position:fixed;left:0;right:0;bottom:0;padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px));background:var(--bg);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px;z-index:3">
+    <div class="barra-fija" style="display:flex;flex-direction:column;gap:8px">
       <a class="btn primary big" href="${U.mapsUrl(c)}" target="_blank" rel="noopener">${I.svg(I.nav, 20)} Iniciar visita</a>
       <div class="btn-row"><button class="btn" data-ruta>Añadir a ruta</button><button class="btn" data-visita>Registrar visita</button><button class="btn" data-go="pedido:nuevo-${c.id}">Pedido</button></div></div>`, { nav: false });
   wireBack(el); wireGo(el); wireTareas(el); VENTAS.wireGrafico(el);

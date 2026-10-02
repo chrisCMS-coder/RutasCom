@@ -33,7 +33,7 @@ SCREENS.nuevaRuta = async () => {
     <div class="chips">${[['rojo', 'Fuera de plazo'], ['ambar', 'Próximos'], ['todos', 'Todos'], ['prospecto', 'Prospectos'], ['inactivo', 'Inactivos'], ['sel', 'Elegidos']].map(([k, l]) => `<button class="chip ${st.filtro === k ? 'on' : ''}" data-f="${k}">${['rojo', 'ambar', 'prospecto', 'inactivo'].includes(k) ? UI.dot(k) : ''}${l}</button>`).join('')}</div>
     <div class="list" id="nlista"></div>
     <div style="height:90px"></div>
-    <div style="position:fixed;left:0;right:0;bottom:0;padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px));background:var(--bg);border-top:1px solid var(--line);z-index:3"><button class="btn primary big" data-calc disabled>Calcular ruta</button></div>`, { nav: false, static: true });
+    <div class="barra-fija"><button class="btn primary big" data-calc disabled>Calcular ruta</button></div>`, { nav: false, static: true });
   wireBack(el);
   const lista = el.querySelector('#nlista'), nsel = el.querySelector('#nsel'), calc = el.querySelector('[data-calc]');
   const distO = c => U.haversineKm(st.origen, c);
