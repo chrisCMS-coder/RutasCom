@@ -258,4 +258,5 @@ L'ERP n'est pas connectable : tout passe par l'import Excel, réimportable quand
 5. **Alerte 6 mois** : délai réglable dans Ajustes (3, 4, 6, 9 ou 12 mois).
 6. **Tâches** : « Mañana » présélectionné depuis une fiche ou après une visite ; « Hoy » depuis la liste.
 7. **Temps jusqu'à la voiture** : 10 min par défaut entre deux visites, **pas** au départ de la maison ni au retour final (sauf en repartant d'un client lors d'un recalcul) ; réglable dans Ajustes et par tournée (0, 5, 10, 15 min).
+9. **Imports (2 octobre)** : les clients sont importés **une seule fois** ; ensuite on ajoute et supprime à la main. Les imports (clients et catalogue) sont **dans Ajustes**, dans un panneau qui s'ouvre sur place, plus sur une page à part. Le réimport reste possible (il complète sans écraser) mais n'est plus le fonctionnement prévu.
 8. **Pause déjeuner** : par défaut « journée continue si possible » — s'il y a des clients ouverts à midi on continue (retour plus tôt) ; s'il y a un trou d'au moins 45 min entre 13 h et 16 h, c'est la pause, affichée dans la frise. Option « 1 h, au meilleur moment » (toujours une heure entre 13 h et 16 h) et « sans pause ».

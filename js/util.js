@@ -7,6 +7,9 @@ const U = {
     });
   },
   now() { return new Date().toISOString(); },
+  /* fecha de modificación: ahora, pero siempre después de la versión anterior (un móvil con el reloj atrasado
+     que edita una versión bajada de otro aparato no debe quedar «más antiguo» y ser ignorado por el servidor) */
+  despues(prev) { const t = new Date().toISOString(); return prev && t <= prev ? new Date(new Date(prev).getTime() + 1).toISOString() : t; },
   today() { return U.isoDate(new Date()); },
   isoDate(d) {
     const z = n => String(n).padStart(2, '0');

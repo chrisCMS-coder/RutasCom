@@ -117,6 +117,7 @@ const XIO = {
     const c = s.lastIndexOf(','), p = s.lastIndexOf('.');
     if (c >= 0 && p >= 0) s = c > p ? s.replace(/\./g, '').replace(',', '.') : s.replace(/,/g, '');
     else if (c >= 0) s = s.replace(/\./g, '').replace(',', '.');
+    else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ''); // «1.234» o «12.500»: punto de miles a la española
     const n = parseFloat(s); return isNaN(n) ? null : n;
   },
 

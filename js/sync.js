@@ -1,7 +1,9 @@
 /* Copia en línea automática (Supabase). Opcional: la app funciona igual sin configurarla.
    Modelo: una tabla `registros` (user_id, kind, id, data, updated_at, deleted). Último en escribir gana. */
 const SYNC = {
-  client: null, cfg: null, estado: 'off', ultimo: null, error: null, _timer: null, _running: false,
+  client: null, cfg: null, estado: 'off', ultimo: null, error: null, _timer: null, _running: false, _gen: 0,
+  /* espera a que termine la sincronización en curso (si la hay) */
+  async esperar() { for (let i = 0; i < 150 && SYNC._running; i++) await U.sleep(100); },
   // Proyecto por defecto: así basta con iniciar sesión en cada dispositivo. La clave publishable es pública por diseño (RLS protege los datos).
   DEFAULT: { url: 'https://rsjlsgilfuubuixrfepp.supabase.co', key: 'sb_publishable_oQCCweWb1iQVSrkveOmeAw_UzpZqJCJ' },
   listeners: new Set(),
@@ -71,7 +73,10 @@ const SYNC = {
     if (prev) {
       await DB.wipe();
       for (const k of ['pin', 'lastBackup', 'demoCargada']) await DB.set(k, null);
-      if (typeof APP !== 'undefined') APP.pin = null;
+      // los ajustes personales (nombre, punto de salida, zonas, mensajes, umbrales…) tampoco pasan al usuario nuevo; solo el tema
+      const tema = (await DB.get('ajustes', {})).tema;
+      await DB.set('ajustes', tema ? { tema } : {});
+      if (typeof APP !== 'undefined') { APP.pin = null; await APP.cargarAjustes(); }
     }
     await DB.set('syncDesde', null); await DB.set('syncUltimo', null); SYNC.ultimo = null;
     await DB.set('syncUid', uid);
@@ -90,6 +95,7 @@ const SYNC = {
   async ahora() {
     if (SYNC._running || !SYNC.client || SYNC.estado !== 'ok') return;
     SYNC._running = true; SYNC.error = null;
+    const gen = SYNC._gen; // si se vacía la base mientras tanto, esta sincronización deja de escribir
     try {
       const { data: s, error: se } = await SYNC.sesion();
       if (!s.session) { if (SYNC.esRed(se)) SYNC.error = 'Sin conexión con la copia en línea (' + (se.message || se.name) + ')'; else SYNC.estado = 'sin-sesion'; return; }
@@ -124,11 +130,13 @@ const SYNC = {
           if (!db[r.kind]) continue;
           const key = r.kind === 'catalogo' ? r.data.ref : r.data.id;
           const cur = await db[r.kind].get(key);
+          if (gen !== SYNC._gen) return;
           if (!cur || (r.data.updatedAt || '') > (cur.updatedAt || '')) { await db[r.kind].put(r.data); cambios++; }
           if (new Date(r.updated_at) > new Date(max)) max = r.updated_at;
         }
         if (data.length < 500) break;
       }
+      if (gen !== SYNC._gen) return;
       await DB.set('syncDesde', max);
       SYNC.ultimo = U.now(); await DB.set('syncUltimo', SYNC.ultimo);
       if (cambios) DB.changed('sync');

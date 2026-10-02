@@ -1,6 +1,6 @@
 /* Arranque, navegación y lógica compartida (rutas, geocodificación en cola). */
 const APP = {
-  VERSION: '1.5.0',
+  VERSION: '1.5.1',
   state: { name: 'hoy', params: {} },
   TABS: [['hoy', 'Hoy', I.home], ['clientes', 'Clientes', I.users], ['mapa', 'Mapa', I.map], ['rutas', 'Rutas', I.route], ['pedidos', 'Pedidos', I.box]],
   ajustes: {},
@@ -124,8 +124,9 @@ const APP = {
         s.querySelector('[data-a=c]').onclick = () => UI.closeSheet();
         s.querySelector('[data-a=ok]').onclick = async e => {
           e.currentTarget.disabled = true;
-          await APP.borrarTodo(); // también cierra la sesión de la copia en línea: hará falta la contraseña para recuperar los datos
-          await APP.clearPin(); await UI.closeSheet(true); abrir();
+          await UI.closeSheet(true);
+          if (await APP.borrarTodoPreguntando() === false) return; // también cierra la sesión de la copia en línea
+          await APP.clearPin(); abrir();
           if (SYNC.estado === 'sin-sesion') await APP.login();
           APP.go('hoy', {}, true);
         };
@@ -136,11 +137,27 @@ const APP = {
   },
   /* Borra los datos de este móvil. Con copia en línea: antes se sube lo pendiente y después se cierra la sesión,
      así los datos no vuelven a bajar solos y nadie sigue conectado a la cuenta. Al volver a entrar se recupera todo. */
-  async borrarTodo() {
+  /* Sin forzar: si quedan cambios que no se han podido subir (sin conexión), lanza {code:'pendientes', n}
+     para que la pantalla pregunte antes de perderlos. */
+  async borrarTodo({ forzar = false } = {}) {
     const conCopia = SYNC.estado === 'ok';
+    if (conCopia) { await SYNC.esperar(); await SYNC.ahora().catch(() => { }); }
+    const n = await db.outbox.count();
+    if (n && !forzar) throw Object.assign(new Error('Hay cambios sin subir'), { code: 'pendientes', n, conCopia });
     if (conCopia) await SYNC.logout({ aProposito: false });
+    await SYNC.esperar();
     await DB.wipe(); await DB.set('demoCargada', false);
     return conCopia;
+  },
+  /* borrarTodo con la pregunta si hay cambios sin subir. Devuelve false si se cancela. */
+  async borrarTodoPreguntando() {
+    try { return await APP.borrarTodo(); }
+    catch (e) {
+      if (e.code !== 'pendientes') throw e;
+      const ok = await UI.confirm('Cambios sin subir', `Hay ${e.n} cambio${e.n === 1 ? '' : 's'} que todavía no se ha${e.n === 1 ? '' : 'n'} podido copiar en línea (sin conexión). Si borras ahora se perderán. Mejor espera a tener conexión, o guarda antes una copia de seguridad.`, { ok: 'Borrar igualmente', danger: true });
+      if (!ok) return false;
+      return await APP.borrarTodo({ forzar: true });
+    }
   },
 
   async cargarAjustes() {
@@ -243,12 +260,20 @@ const APP = {
      'siempre' = 1 h entre las 13:00 y las 16:00, en el mejor momento; 'no' = sin pausa. */
   PAUSA: { duracion: 60, desde: 13 * 60, hasta: 16 * 60 },
   pausaStop(inicio) { return { id: '__pausa', sinLugar: true, duracion: APP.PAUSA.duracion, ventanas: [[APP.PAUSA.desde, APP.PAUSA.hasta]], penaliza: 15, lat: inicio.lat, lng: inicio.lng }; },
+  /* La pausa fija solo tiene sentido entre visitas: si todas acaban antes (o la pausa quedó la última), se quita
+     y se vuelve a casa sin esperar a la hora de comer. */
+  _sinPausaSobrante(stops, r, iPausa, opts) {
+    const visitas = r.orden.filter(i => i !== iPausa);
+    if (!r.orden.includes(iPausa) || r.orden[r.orden.length - 1] !== iPausa) return r;
+    const s = ROUTE.simular(stops, visitas, opts);
+    return Object.assign({}, s, { orden: visitas, noCaben: r.noCaben.filter(i => i !== iPausa) });
+  },
   /* Marca en la ruta la pausa (fija) o el hueco natural para comer, o la jornada continua */
   _anotarComida(ruta, plan, iPausa) {
     ruta.pausa = null; ruta.pausaNoCabe = false;
     const pe = iPausa >= 0 ? plan.find(pl => pl.i === iPausa) : null;
     if (pe) ruta.pausa = { inicio: pe.inicio, fin: pe.fin, tipo: 'fija' };
-    else if (iPausa >= 0) ruta.pausaNoCabe = true;
+    else if (iPausa >= 0) ruta.pausaNoCabe = plan.some(pl => pl.fin > APP.PAUSA.desde); // si todo acaba antes de comer, no hace falta
     else if ((ruta.comida || APP.ajustes.comida || 'auto') === 'auto') {
       let mejor = null;
       for (const pl of plan) {
@@ -276,7 +301,9 @@ const APP = {
     if ((ruta.comida || APP.ajustes.comida) === 'siempre' && stops.length && salida < APP.PAUSA.hasta - APP.PAUSA.duracion) { iPausa = stops.length; stops.push(APP.pausaStop(inicio)); }
     const points = [inicio, ...stops, ruta.destino];
     const m = stops.length ? await APP.matrizRuta(points, ruta, desdeCliente) : { dur: [[0, 0], [0, 0]], dist: [[0, 0], [0, 0]], estimado: false };
-    const r = stops.length ? ROUTE.planificar(stops, { salida, limite: U.parseTime(ruta.limite), dur: m.dur, dist: m.dist }) : { orden: [], plan: [], km: 0, conduccion: 0, fin: salida, ok: true, noCaben: [] };
+    const opts = { salida, limite: U.parseTime(ruta.limite), dur: m.dur, dist: m.dist };
+    let r = stops.length ? ROUTE.planificar(stops, opts) : { orden: [], plan: [], km: 0, conduccion: 0, fin: salida, ok: true, noCaben: [] };
+    if (iPausa >= 0) r = APP._sinPausaSobrante(stops, r, iPausa, opts);
     const sinHora = { llegada: null, inicio: null, fin: null, viaje: null };
     const nuevas = r.plan.filter(pl => pl.i !== iPausa).map(pl => Object.assign({}, pendientes[pl.i], { llegada: pl.llegada, inicio: pl.inicio, fin: pl.fin, viaje: pl.viaje, noCabe: false }));
     const fuera = [...r.noCaben.filter(i => i !== iPausa).map(i => pendientes[i]), ...sinCoord].map(p => Object.assign({}, p, sinHora, { noCabe: true }));
@@ -296,17 +323,18 @@ const APP = {
     if (!pend.length) { await DB.save('rutas', ruta); return { retraso: 0, riesgos: [], ok: true }; }
     const dow = U.parseDate(ruta.fecha).getDay();
     const { inicio, salida, desdeCliente } = APP.reanudacion(ruta, byId);
-    const stops = pend.map(p => { const c = byId[p.clienteId]; return { lat: c.lat, lng: c.lng, horaFija: p.horaFija ? U.parseTime(p.horaFija) : null, duracion: p.duracion || ruta.duracion, ventanas: ROUTE.ventanas(c.horario, APP.ajustes.horario, dow) }; });
+    const stops = pend.map(p => { const c = byId[p.clienteId]; let hf = p.horaFija ? U.parseTime(p.horaFija) : null; if (hf != null && hf + 10 < salida) hf = null; /* cita ya pasada: visita normal, sin alerta */
+      return { lat: c.lat, lng: c.lng, horaFija: hf, duracion: p.duracion || ruta.duracion, ventanas: ROUTE.ventanas(c.horario, APP.ajustes.horario, dow) }; });
     let iPausa = -1;
     if ((ruta.comida || APP.ajustes.comida) === 'siempre' && ruta.pausa && ruta.pausa.tipo === 'fija' && ruta.pausa.fin > salida && salida < APP.PAUSA.hasta - APP.PAUSA.duracion) { iPausa = stops.length; stops.push(APP.pausaStop(inicio)); }
     const m = await APP.matrizRuta([inicio, ...stops, ruta.destino], ruta, desdeCliente);
     const opts = { salida, limite: U.parseTime(ruta.limite), dur: m.dur, dist: m.dist };
     const base = pend.map((_, k) => k);
     let res = ROUTE.simular(stops, base, opts);
-    if (iPausa >= 0) { // la pausa se coloca en el hueco que mejor encaja, sin cambiar el orden de las visitas
+    if (iPausa >= 0) { // la pausa se coloca en el hueco que mejor encaja (nunca la última), sin cambiar el orden de las visitas
       let mejor = null;
-      for (let k = 0; k <= base.length; k++) { const r = ROUTE.simular(stops, [...base.slice(0, k), iPausa, ...base.slice(k)], opts); if (!mejor || (r.ok && !mejor.ok) || (r.ok === mejor.ok && r.fin < mejor.fin)) mejor = r; }
-      res = mejor;
+      for (let k = 0; k < base.length; k++) { const r = ROUTE.simular(stops, [...base.slice(0, k), iPausa, ...base.slice(k)], opts); if (!mejor || (r.ok && !mejor.ok) || (r.ok === mejor.ok && r.fin < mejor.fin)) mejor = r; }
+      if (mejor && (mejor.ok || !res.ok)) res = mejor; else iPausa = -1;
     }
     const antes = pend[0].inicio;
     const nuevas = res.plan.filter(pl => pl.i !== iPausa).map(pl => Object.assign({}, pend[pl.i], { llegada: pl.llegada, inicio: pl.inicio, fin: pl.fin, viaje: pl.viaje }));
@@ -396,7 +424,7 @@ const APP = {
           if (!misma) return;
           if (r) { cur.lat = r.lat; cur.lng = r.lng; cur.geocodeStatus = r.precision === 'localidad' ? 'aprox' : 'ok'; }
           else cur.geocodeStatus = 'fallo';
-          cur.updatedAt = U.now();
+          cur.updatedAt = U.despues(cur.updatedAt);
           await db.clientes.put(cur); await db.outbox.put({ kind: 'clientes', id: cur.id, at: cur.updatedAt });
           cambios++;
         });

@@ -12,8 +12,8 @@ const GEO = {
      Lanza un error si no se pudo preguntar (sin conexión, servicio saturado): así no se marca como «no encontrada». */
   async geocode(c) {
     const dir = U.direccion(c);
-    let fallos = 0;
-    const comprobar = r => { if (!r.ok && (r.status === 429 || r.status >= 500)) fallos++; return r.ok; };
+    let fallos = 0, respuestas = 0; // respuestas: servicios que contestaron (con o sin resultado)
+    const comprobar = r => { if (r.ok) respuestas++; else if (r.status === 429 || r.status >= 500) fallos++; return r.ok; };
     // 1) Nominatim estructurado
     try {
       await GEO._throttle(1100);
@@ -56,7 +56,8 @@ const GEO = {
       const r = await fetch('https://nominatim.openstreetmap.org/search?' + p);
       if (comprobar(r)) { const j = await r.json(); if (j[0]) return { lat: +j[0].lat, lng: +j[0].lon, precision: 'localidad' }; }
     } catch (e) { fallos++; console.warn('nominatim2', e); }
-    if (fallos) throw new Error('Sin conexión con el buscador de direcciones');
+    // solo es «sin conexión» si ningún servicio contestó; si alguno dijo «no existe», la dirección no se encontró
+    if (fallos && !respuestas) throw new Error('Sin conexión con el buscador de direcciones');
     return null;
   },
 

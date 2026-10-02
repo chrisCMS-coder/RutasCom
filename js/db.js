@@ -19,7 +19,7 @@ const DB = {
 
   /* ---------- escritura con marca de tiempo y cola de sincronización ---------- */
   async save(kind, rec) {
-    rec.updatedAt = U.now();
+    rec.updatedAt = U.despues(rec.updatedAt);
     if (!rec.createdAt) rec.createdAt = rec.updatedAt;
     await db[kind].put(rec);
     await db.outbox.put({ kind, id: rec.id || rec.ref, at: rec.updatedAt });
@@ -31,10 +31,9 @@ const DB = {
     r.deleted = true; await DB.save(kind, r);
   },
   async bulkSave(kind, recs) {
-    const t = U.now();
-    for (const r of recs) { r.updatedAt = t; if (!r.createdAt) r.createdAt = t; }
+    for (const r of recs) { r.updatedAt = U.despues(r.updatedAt); if (!r.createdAt) r.createdAt = r.updatedAt; }
     await db[kind].bulkPut(recs);
-    await db.outbox.bulkPut(recs.map(r => ({ kind, id: r.id || r.ref, at: t })));
+    await db.outbox.bulkPut(recs.map(r => ({ kind, id: r.id || r.ref, at: r.updatedAt })));
     DB.changed(kind);
   },
   listeners: new Set(),
@@ -111,6 +110,7 @@ const DB = {
     DB.changed('all');
   },
   async wipe() {
+    if (typeof SYNC !== 'undefined') SYNC._gen++; // una sincronización en curso ya no puede escribir en la base vaciada
     await Promise.all([...TABLAS, 'outbox'].map(t => db[t].clear()));
     // sin datos locales, la próxima sincronización debe bajarlo todo otra vez
     await DB.set('syncDesde', null); await DB.set('syncUltimo', null);

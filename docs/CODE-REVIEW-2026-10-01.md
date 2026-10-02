@@ -229,3 +229,24 @@ Tous les constats sont corrigés sur la branche de travail, **sans publication**
 Autres : texte « 200 librerías » corrigé, message d'erreur de synchro échappé, écouteurs de synchro enregistrés une seule fois. Inscriptions Supabase désactivées par le propriétaire du projet.
 
 **Vérification** : 37 contrôles automatiques dans Chromium (fuseau Europe/Madrid, réseau coupé vers Supabase et les cartes), 2000 tournées aléatoires pour le planificateur, SQL testé sur Postgres 16 (relance sans erreur, ancienne version refusée, date du serveur).
+
+---
+
+## Deuxième review (2 octobre 2026) et corrections
+
+Review de tout ce qui n'est pas encore publié (corrections + brief). Les 10 constats sont corrigés :
+
+| # | Problème | Correction |
+|---|---|---|
+| 1 | « Borrar todo » / « PIN olvidado » pouvaient perdre les changements non envoyés, et une synchro en cours pouvait réécrire après l'effacement | On attend la synchro en cours ; s'il reste des envois, l'appli demande confirmation ; une synchro lancée avant l'effacement n'écrit plus rien après |
+| 2 | Avec la règle serveur, une modif faite sur un téléphone à l'horloge en retard pouvait être ignorée | La date de modification est toujours postérieure à la version précédente |
+| 3 | Un nouveau client qui n'achète que depuis cette année était classé « Inactif » | Il n'est inactif que s'il n'a aucune vente, ni l'année de référence ni après |
+| 4 | « Subir / Bajar » faisait disparaître la pause fixe | Même recalcul qu'à la validation (pause et clients qui ne rentrent pas conservés) |
+| 5 | Pause « 1 h » : une journée finie le matin attendait 13 h avant de rentrer | La pause n'est placée qu'entre deux visites ; sinon on rentre directement |
+| 6 | CSV : « 1.234 » lu 1,234 € | Point de milliers reconnu (« 1.234 », « 12.500 ») |
+| 7 | Un service de recherche d'adresses saturé arrêtait toute la recherche | « Sans connexion » seulement si aucun service n'a répondu |
+| 8 | Un rendez-vous déjà manqué relançait l'alerte à chaque visite | Traité comme une visite normale, sans alerte |
+| 9 | Un autre utilisateur héritait des réglages du précédent | Réglages remis à zéro au changement de compte (sauf le thème) |
+| 10 | La recherche de Pedidos redessinait tout l'écran | Filtre en mémoire, seule la liste change |
+
+Vérification : 11 nouveaux contrôles automatiques (en plus des 66 existants), tous verts.

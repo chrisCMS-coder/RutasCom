@@ -178,19 +178,7 @@ SCREENS.ruta = async ({ id }) => {
       <button class="btn" data-a="up" ${i === 0 || r.paradas[i - 1].hecho ? 'disabled' : ''}>${I.svg(I.up, 18)} Subir</button><button class="btn" data-a="down" ${i >= ultimaPlan ? 'disabled' : ''}>${I.svg(I.down, 18)} Bajar</button>
       ${c && U.canal(c) && futura ? '<button class="btn" data-a="franja">Avisar con franja horaria («entre las … y las …»)</button>' : ''}
       <button class="btn" data-a="saltar">Marcar como hecha sin registrar</button><button class="btn danger" data-a="quitar">Quitar de la ruta</button></div>`);
-    const manual = async () => { // recalcula horas manteniendo el orden (las que no caben se quedan aparte)
-      const hechas = r.paradas.filter(x => x.hecho), pendientes = r.paradas.filter(x => !x.hecho && !x.noCabe && byId[x.clienteId]?.lat);
-      const resto = r.paradas.filter(x => !x.hecho && !pendientes.includes(x));
-      const dow = U.parseDate(r.fecha).getDay();
-      const { inicio, salida, desdeCliente } = APP.reanudacion(r, byId);
-      const stops = pendientes.map(x => { const c = byId[x.clienteId]; return { lat: c.lat, lng: c.lng, horaFija: x.horaFija ? U.parseTime(x.horaFija) : null, duracion: x.duracion || r.duracion, ventanas: ROUTE.ventanas(c.horario, APP.ajustes.horario, dow) }; });
-      const m = await APP.matrizRuta([inicio, ...stops, r.destino], r, desdeCliente);
-      const res = ROUTE.simular(stops, stops.map((_, k) => k), { salida, limite: U.parseTime(r.limite), dur: m.dur, dist: m.dist });
-      r.paradas = [...hechas, ...res.plan.map(pl => Object.assign({}, pendientes[pl.i], { llegada: pl.llegada, inicio: pl.inicio, fin: pl.fin, viaje: pl.viaje })), ...resto];
-      APP._anotarComida(r, res.plan, -1);
-      r.km = res.km; r.conduccion = res.conduccion; r.fin = res.fin; r.ok = res.ok; r.estimado = m.estimado;
-      await DB.save('rutas', r);
-    };
+    const manual = () => APP.recalcularHoras(r); // recalcula horas manteniendo el orden (con la pausa y las que no caben)
     s.querySelector('[data-a=hora]').onclick = async () => { await UI.closeSheet(); const v = await sheetHora(p.horaFija); if (v !== undefined) { p.horaFija = v; await APP.replanRuta(r); } };
     s.querySelector('[data-a=up]').onclick = async () => { await UI.closeSheet(); if (i > 0 && !r.paradas[i - 1].hecho) { [r.paradas[i - 1], r.paradas[i]] = [r.paradas[i], r.paradas[i - 1]]; await manual(); } };
     s.querySelector('[data-a=down]').onclick = async () => { await UI.closeSheet(); if (i < ultimaPlan) { [r.paradas[i + 1], r.paradas[i]] = [r.paradas[i], r.paradas[i + 1]]; await manual(); } };
@@ -325,7 +313,7 @@ SCREENS.ubicacion = async ({ id }) => {
 };
 
 /* ======================= AJUSTES ======================= */
-SCREENS.ajustes = async () => {
+SCREENS.ajustes = async (params = {}) => {
   const a = APP.ajustes; const h = a.horario;
   const [counts, clientes, lastBackup, demo, email] = await Promise.all([DB.counts(), DB.clientes(), DB.get('lastBackup', null), DB.get('demoCargada', false), DB.get('syncEmail', '')]);
   const pendGeo = clientes.filter(c => !c.lat && c.geocodeStatus !== 'manual').length, fallos = clientes.filter(c => !c.lat && c.geocodeStatus === 'fallo').length, aprox = clientes.filter(c => c.geocodeStatus === 'aprox').length;
@@ -335,8 +323,8 @@ SCREENS.ajustes = async () => {
       <div class="card"><div class="row between"><div class="col"><div class="bold">${U.esc(email || 'Sesión iniciada')}</div><div class="muted small">Tus datos se sincronizan con tus otros dispositivos</div></div><button class="btn sm outline" data-logout>Cerrar sesión</button></div></div></div>` : ''}
     <div class="section"><div class="section-title">Datos</div>
       <div class="muted small">${counts.clientes} clientes · ${counts.visitas} visitas · ${counts.pedidos} pedidos · ${counts.tareas} tareas · ${counts.catalogo} artículos en catálogo</div>
-      <button class="btn" data-go="importar">${I.svg(I.file, 18)} Importar clientes desde Excel</button>
-      <button class="btn" data-go="importarCatalogo">${I.svg(I.file, 18)} Importar catálogo de productos</button>
+      <button class="btn" data-imp="clientes">${I.svg(I.file, 18)} Importar clientes desde Excel</button><div id="imp_clientes"></div>
+      <button class="btn" data-imp="catalogo">${I.svg(I.file, 18)} Importar catálogo de productos</button><div id="imp_catalogo"></div>
       <button class="btn" data-expcli>Exportar clientes a Excel</button>
       ${pendGeo ? `<div class="card"><div class="bold">${pendGeo} clientes sin ubicación en el mapa</div><div class="muted small">${fallos} no se encontraron automáticamente${aprox ? ` · ${aprox} solo a nivel de localidad` : ''}</div><div class="btn-row" style="margin-top:10px"><button class="btn sm primary" data-geo>Buscar direcciones</button><button class="btn sm outline" data-go="sinUbicacion">Ver lista</button></div><div class="progress hidden" id="gp" style="margin-top:10px"><div></div></div></div>` : (aprox ? `<button class="btn outline" data-go="sinUbicacion">${aprox} clientes con ubicación aproximada</button>` : '')}</div>
     <div class="section"><div class="section-title">Copia de seguridad</div>
@@ -387,6 +375,14 @@ SCREENS.ajustes = async () => {
     if (!g) { UI.toast('No encuentro ese lugar'); return; }
     await APP.guardarAjustes({ origen: { nombre: t, lat: g.lat, lng: g.lng } }); UI.toast('Punto de salida guardado');
   };
+  const abrirImport = async tipo => {
+    const cont = el.querySelector('#imp_' + tipo), otro = el.querySelector('#imp_' + (tipo === 'clientes' ? 'catalogo' : 'clientes'));
+    if (cont.childElementCount) { if (el.dataset.static === undefined) cont.replaceChildren(); return; } // segundo toque: se pliega
+    if (otro.childElementCount && el.dataset.static !== undefined) { UI.toast('Termina primero la otra importación'); return; }
+    otro.replaceChildren(); await montarImport(tipo, cont, el); cont.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+  el.querySelectorAll('[data-imp]').forEach(b => b.onclick = () => abrirImport(b.dataset.imp));
+  if (params.abrir) { const t = params.abrir; params.abrir = null; el._afterMount = () => abrirImport(t); }
   el.querySelectorAll('#atema button').forEach(b => b.onclick = async () => { el.querySelectorAll('#atema button').forEach(x => x.classList.toggle('on', x === b)); await APP.guardarAjustes({ tema: b.dataset.t }); APP.aplicarTema(b.dataset.t); });
   el.querySelectorAll('#atc button').forEach(b => b.onclick = async () => { el.querySelectorAll('#atc button').forEach(x => x.classList.toggle('on', x === b)); await APP.guardarAjustes({ tiempoCoche: +b.dataset.m }); UI.toast('Se aplica a las rutas nuevas', 1500); });
   el.querySelectorAll('#acom button').forEach(b => b.onclick = async () => { el.querySelectorAll('#acom button').forEach(x => x.classList.toggle('on', x === b)); await APP.guardarAjustes({ comida: b.dataset.k }); UI.toast('Se aplica a las rutas nuevas', 1500); });
@@ -434,7 +430,8 @@ SCREENS.ajustes = async () => {
     const conCopia = SYNC.estado === 'ok';
     const texto = conCopia ? 'Clientes, visitas, pedidos, rutas y catálogo de este móvil. La copia en línea no se toca: se cierra la sesión y, al volver a entrar, se recupera todo.' : 'Clientes, visitas, pedidos, rutas y catálogo de este móvil. Haz una copia antes.';
     if (!await UI.confirm('¿Borrar TODO?', texto, { ok: 'Borrar todo', danger: true })) return;
-    await APP.borrarTodo(); UI.toast('Datos borrados');
+    if (await APP.borrarTodoPreguntando() === false) return;
+    UI.toast('Datos borrados');
     if (conCopia) await APP.login();
     APP.go('hoy', {}, true);
   };
@@ -514,26 +511,35 @@ SCREENS.sinUbicacion = async () => {
 };
 
 /* ======================= IMPORTAR ======================= */
-SCREENS.importar = async () => importarPantalla('clientes');
-SCREENS.importarCatalogo = async () => importarPantalla('catalogo');
-async function importarPantalla(tipo) {
+/* Las importaciones viven dentro de Ajustes (panel desplegable), no en una página aparte.
+   Las direcciones antiguas «importar» llevan a Ajustes con el panel abierto. */
+SCREENS.importar = async () => SCREENS.ajustes({ abrir: 'clientes' });
+SCREENS.importarCatalogo = async () => SCREENS.ajustes({ abrir: 'catalogo' });
+/* Monta el importador en `cont` (dentro de la pantalla de Ajustes, `pantalla`). Mientras hay un archivo
+   elegido o una importación en curso, la pantalla no se repinta sola (data-static). */
+async function montarImport(tipo, cont, pantalla) {
   const esCli = tipo === 'clientes';
   const CAMPOS = esCli ? XIO.CAMPOS_CLIENTE : XIO.CAMPOS_CATALOGO;
   let leido = null, map = {}, meses = [];
-  const el = screen(topbar(esCli ? 'Importar clientes' : 'Importar catálogo') + `
-    <div class="section" style="padding-top:0"><div class="muted small">${esCli ? 'Excel o CSV con una fila por cliente. La primera fila debe tener los títulos de las columnas (nombre, dirección, CP, localidad…). Después se buscan las direcciones en el mapa.' : 'Excel o CSV con referencia/ISBN, título y precio. Sirve para apuntar pedidos buscando por título.'}</div>
-      <label class="btn primary big" style="cursor:pointer">${I.svg(I.file, 20)} Elegir archivo<input type="file" accept=".xlsx,.xls,.csv" data-file class="sr-only"></label></div>
-    <div class="section hidden" id="mapeo"><div class="section-title">Columnas</div><div class="muted small" id="info"></div><div class="col" id="campos" style="gap:10px"></div>
+  const hayClientes = esCli && (await DB.counts()).clientes > 0;
+  const fijar = on => { if (on) pantalla.dataset.static = ''; else delete pantalla.dataset.static; };
+  const el = UI.el(`<div class="card" style="display:flex;flex-direction:column;gap:12px">
+    <div class="col" style="gap:10px"><div class="muted small">${esCli ? 'Excel o CSV con una fila por cliente. La primera fila debe tener los títulos de las columnas (nombre, dirección, CP, localidad…). Después se buscan las direcciones en el mapa.' : 'Excel o CSV con referencia/ISBN, título y precio. Sirve para apuntar pedidos buscando por título.'}</div>
+      <label class="btn primary" style="cursor:pointer">${I.svg(I.file, 20)} Elegir archivo<input type="file" accept=".xlsx,.xls,.csv" data-file class="sr-only"></label></div>
+    <div class="col hidden" id="mapeo" style="gap:10px"><div class="section-title">Columnas</div><div class="muted small" id="info"></div><div class="col" id="campos" style="gap:10px"></div>
       <div class="field"><label>Si el cliente ya existe</label><div class="seg c2" id="modo"><button class="on" data-m="completar">Completar</button><button data-m="ventas">Solo ventas</button></div><div class="muted small">«Completar» rellena lo que falta y añade las ventas nuevas; nunca borra ni cambia lo que ya tiene la ficha.</div></div>
-      <button class="btn primary big" data-ok>Importar</button></div>
-    <div class="section hidden" id="prog"><div class="bold" id="ptxt"></div><div class="progress"><div></div></div><button class="btn outline" data-stop>Parar (se puede continuar luego)</button></div>`, { nav: false, static: true });
-  wireBack(el);
+      <div class="btn-row"><button class="btn" data-cancelar>Cancelar</button><button class="btn primary" data-ok>Importar</button></div></div>
+    <div class="col hidden" id="prog" style="gap:10px"><div class="bold" id="ptxt"></div><div class="progress"><div></div></div><button class="btn outline" data-stop>Parar (se puede continuar luego)</button></div></div>`);
+  cont.replaceChildren(el);
   let modo = 'completar';
+  if (!hayClientes) el.querySelector('#modo').parentElement.classList.add('hidden'); // primera importación: no hay nada que completar
+  el.querySelector('[data-cancelar]').onclick = () => { fijar(false); cont.replaceChildren(); APP.render(); };
   el.querySelectorAll('#modo button').forEach(b => b.onclick = () => { modo = b.dataset.m; el.querySelectorAll('#modo button').forEach(x => x.classList.toggle('on', x === b)); });
   if (!esCli) el.querySelector('#modo').parentElement.classList.add('hidden');
   el.querySelector('[data-file]').onchange = async e => {
     const f = e.target.files[0]; if (!f) return;
     try { leido = await XIO.leer(f); } catch (err) { UI.toast(err.message); return; }
+    fijar(true);
     // columnas de meses (ventas): se detectan solas y no se ofrecen para los demás campos
     meses = esCli ? VENTAS.columnasMes(leido.headers) : [];
     const cabeceras = leido.headers.filter(h => !meses.some(m => m.h === h));
@@ -552,7 +558,8 @@ async function importarPantalla(tipo) {
       const items = XIO.filasACatalogo(leido.rows, map);
       await db.catalogo.bulkPut(items); await db.outbox.bulkPut(items.map(i => ({ kind: 'catalogo', id: i.ref, at: U.now() })));
       const filas = leido.rows.length, rep = filas - items.length;
-      DB.changed('catalogo'); UI.toast(`${items.length} artículos importados${rep > 0 ? ` (${rep} filas vacías o con la referencia repetida)` : ''}`, 4000); APP.back(); return;
+      UI.toast(`${items.length} artículos importados${rep > 0 ? ` (${rep} filas vacías o con la referencia repetida)` : ''}`, 4000);
+      fijar(false); cont.replaceChildren(); DB.changed('catalogo'); APP.render(); return;
     }
     const nuevos = XIO.filasAClientes(leido.rows, map, meses);
     const existentes = await DB.clientes();
@@ -610,7 +617,8 @@ async function importarPantalla(tipo) {
     el.querySelector('#mapeo').classList.add('hidden'); const prog = el.querySelector('#prog'); prog.classList.remove('hidden');
     const bar = prog.querySelector('.progress > div'), txt = el.querySelector('#ptxt');
     el.querySelector('[data-stop]').onclick = () => { APP.geo.parar = true; };
-    if (!navigator.onLine) { txt.textContent = 'Sin conexión: las direcciones se buscarán cuando la haya (Ajustes → Buscar direcciones).'; return; }
+    const terminar = () => { prog.querySelector('[data-stop]').classList.add('hidden'); fijar(false); prog.appendChild(UI.el(`<div class="btn-row"><button class="btn" data-cerrar>Cerrar</button><button class="btn primary" data-fin>Ir a clientes</button></div>`)); prog.querySelector('[data-fin]').onclick = () => APP.go('clientes'); prog.querySelector('[data-cerrar]').onclick = () => { cont.replaceChildren(); APP.render(); }; };
+    if (!navigator.onLine) { txt.textContent = 'Sin conexión: las direcciones se buscarán cuando la haya (Ajustes → Buscar direcciones).'; terminar(); return; }
     txt.textContent = 'Buscando direcciones en el mapa… (aprox. 2 segundos por cliente)';
     const g = await APP.geocodificarPendientes(g => { bar.style.width = (g.total ? g.hechos / g.total * 100 : 100) + '%'; txt.textContent = `Buscando direcciones… ${g.hechos} de ${g.total}`; });
     const sin = (await DB.clientes()).filter(c => !c.lat);
@@ -619,8 +627,6 @@ async function importarPantalla(tipo) {
     if (noEncontradas) partes.push(`${noEncontradas} direcciones no se encontraron: sitúalas a mano desde Ajustes → Ver lista.`);
     if (porBuscar) partes.push(`${porBuscar} quedan por buscar${g && g.errorRed ? ' (sin conexión con el buscador)' : g && g.parar ? ' (búsqueda parada)' : ''}: se puede seguir desde Ajustes → Buscar direcciones.`);
     txt.textContent = (porBuscar ? 'Búsqueda interrumpida. ' : 'Listo. ') + (partes.join(' ') || 'Todas las direcciones situadas.');
-    prog.querySelector('[data-stop]').classList.add('hidden');
-    prog.appendChild(UI.el(`<button class="btn primary" data-fin>Ir a clientes</button>`)); prog.querySelector('[data-fin]').onclick = () => APP.go('clientes', {}, true);
+    terminar();
   };
-  return el;
 }

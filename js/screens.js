@@ -81,7 +81,7 @@ SCREENS.hoy = async () => {
   const carteraHtml = clientes.length ? `<div class="section"><div class="section-title">Cartera · ${clientes.length} clientes</div>
     <div class="row wrap" style="gap:8px">${['rojo', 'ambar', 'verde', 'azul', 'prospecto', 'inactivo'].map(chip).join('')}</div></div>` : '';
   const bienvenida = !clientes.length ? `<div class="section"><div class="card accent"><div class="bold" style="font-size:18px">Empezar</div><p class="muted small" style="margin:6px 0 12px">Importa tus clientes desde Excel o carga unas 160 librerías de Cataluña como datos de prueba (direcciones reales, datos comerciales inventados).</p>
-    <div class="col" style="gap:8px"><button class="btn primary" data-go="importar">${I.svg(I.file, 18)} Importar clientes desde Excel</button><button class="btn" data-demo>Cargar datos de prueba</button></div></div></div>` : '';
+    <div class="col" style="gap:8px"><button class="btn primary" data-importar>${I.svg(I.file, 18)} Importar clientes desde Excel</button><button class="btn" data-demo>Cargar datos de prueba</button></div></div></div>` : '';
 
   const el = screen(`<div class="hdr"><div class="hdr-row"><div class="col"><div class="eyebrow">${U.esc(U.fmtDateLong(d))}</div><h1>Hoy</h1></div>
       <div class="row" style="gap:8px"><button class="iconbtn" data-go="tareas" aria-label="Tareas (${tareas.length} pendientes)">${I.svg(I.check, 22)}${tareas.length ? `<span class="badge-inline">${tareas.length}</span>` : ''}</button><button class="iconbtn" data-go="ajustes" aria-label="Ajustes">${I.svg(I.gear, 22)}</button></div></div>
@@ -92,6 +92,7 @@ SCREENS.hoy = async () => {
   el.querySelector('[data-login]')?.addEventListener('click', async () => { await APP.login(); APP.render(); });
   el.querySelector('[data-demo]')?.addEventListener('click', async e => { e.currentTarget.disabled = true; UI.toast('Cargando datos de prueba…'); const n = await APP.cargarDemo(); UI.toast(`${n} clientes de prueba cargados`); });
   el.querySelector('[data-cerca]')?.addEventListener('click', () => APP.go('mapa', { cerca: true }));
+  el.querySelector('[data-importar]')?.addEventListener('click', () => APP.go('ajustes', { abrir: 'clientes' }));
   el.querySelectorAll('[data-visita]').forEach(b => b.onclick = () => sheetVisita(b.dataset.visita, { rutaId: b.dataset.parada }));
   el._afterMount = () => {
     const mm = el.querySelector('#miniMap');
@@ -385,35 +386,44 @@ SCREENS.pedidos = async () => {
   if (!st.desde) { st.desde = rangos.mes[0]; st.hasta = hoy; }
   if (st.vista === 'rango' && st.desde > st.hasta) [st.desde, st.hasta] = [st.hasta, st.desde];
   const r = st.vista === 'rango' ? [st.desde, st.hasta] : rangos[st.vista];
-  const qn = U.norm(st.q);
-  const lista = vivos.filter(p => { const d = diaDe(p); return (!r || (d >= r[0] && d <= r[1])) && (!qn || U.norm((byId[p.clienteId] || {}).nombre + ' ' + ((byId[p.clienteId] || {}).localidad || '')).includes(qn)); });
-  const importe = lista.reduce((s, p) => s + totalPedido(p), 0), unidades = lista.reduce((s, p) => s + udsPedido(p), 0);
-  let html = '', dia = null;
-  for (const p of lista.slice(0, 300)) {
-    const d = diaDe(p); if (d !== dia) { dia = d; html += `<div class="group-title">${d === hoy ? 'Hoy' : U.fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' })}</div>`; }
-    const c = byId[p.clienteId] || { nombre: '(cliente eliminado)' };
-    html += `<button class="item" data-go="pedido:${p.id}"><div class="col grow"><div class="name">${U.esc(c.nombre)}</div><div class="meta">${(p.lineas || []).length} líneas · ${udsPedido(p)} uds · ${new Date(p.fecha).toTimeString().slice(0, 5)}${p.modificadoAt ? ' · modificado' : ''}${p.nota ? ' · ' + U.esc(p.nota.slice(0, 40)) : ''}</div></div><div class="right">${totalPedido(p) ? U.fmtEur(totalPedido(p)) : ''}</div></button>`;
-  }
+  const enRango = vivos.filter(p => { const d = diaDe(p); return !r || (d >= r[0] && d <= r[1]); });
+  const busc = Object.fromEntries(Object.values(byId).map(c => [c.id, U.norm(c.nombre + ' ' + (c.localidad || ''))]));
   const el = screen(`<div class="hdr"><div class="hdr-row"><h1>Pedidos</h1><div class="muted bold">${vivos.length}</div></div></div>
     <div class="search">${I.svg(I.search, 20)}<input id="pq" type="search" placeholder="Buscar por cliente" value="${U.esc(st.q)}" autocomplete="off"></div>
     <div class="chips">${[['hoy', 'Hoy'], ['semana', 'Esta semana'], ['mes', 'Este mes'], ['rango', 'Fechas…'], ['todos', 'Todos']].map(([k, l]) => `<button class="chip ${st.vista === k ? 'on' : ''}" data-v="${k}">${l}</button>`).join('')}</div>
     ${st.vista === 'rango' ? `<div class="section" style="padding-top:4px"><div class="field-row"><div class="field"><label for="pdd">Desde</label><input type="date" id="pdd" value="${st.desde}" max="${hoy}"></div><div class="field"><label for="pdh">Hasta</label><input type="date" id="pdh" value="${st.hasta}"></div></div></div>` : ''}
-    ${lista.length ? `<div class="section" style="padding-top:4px"><div class="muted small bold">${lista.length} pedido${lista.length === 1 ? '' : 's'} · ${unidades} uds${importe ? ' · ' + U.fmtEur(importe, 2) : ''}</div>
+    <div id="pdres"></div>`);
+  const res = el.querySelector('#pdres');
+  let lista = [];
+  // la búsqueda filtra en memoria y solo repinta la lista (el campo de texto no se toca)
+  const pintar = () => {
+    const qn = U.norm(st.q);
+    lista = qn ? enRango.filter(p => (busc[p.clienteId] || '').includes(qn)) : enRango;
+    const importe = lista.reduce((s, p) => s + totalPedido(p), 0), unidades = lista.reduce((s, p) => s + udsPedido(p), 0);
+    let html = '', dia = null;
+    for (const p of lista.slice(0, 300)) {
+      const d = diaDe(p); if (d !== dia) { dia = d; html += `<div class="group-title">${d === hoy ? 'Hoy' : U.fmtDate(d, { weekday: 'short', day: 'numeric', month: 'short' })}</div>`; }
+      const c = byId[p.clienteId] || { nombre: '(cliente eliminado)' };
+      html += `<button class="item" data-go="pedido:${p.id}"><div class="col grow"><div class="name">${U.esc(c.nombre)}</div><div class="meta">${(p.lineas || []).length} líneas · ${udsPedido(p)} uds · ${new Date(p.fecha).toTimeString().slice(0, 5)}${p.modificadoAt ? ' · modificado' : ''}${p.nota ? ' · ' + U.esc(p.nota.slice(0, 40)) : ''}</div></div><div class="right">${totalPedido(p) ? U.fmtEur(totalPedido(p)) : ''}</div></button>`;
+    }
+    res.innerHTML = `${lista.length ? `<div class="section" style="padding-top:4px"><div class="muted small bold">${lista.length} pedido${lista.length === 1 ? '' : 's'} · ${unidades} uds${importe ? ' · ' + U.fmtEur(importe, 2) : ''}</div>
       <button class="btn primary big" data-exportar>${I.svg(I.share, 20)} Exportar Excel · ${lista.length} pedido${lista.length === 1 ? '' : 's'}</button><div class="muted small center">Se abre el menú de compartir del móvil (WhatsApp, Gmail, Drive…)</div></div>` : ''}
-    <div class="list">${html || '<div class="empty">No hay pedidos aquí</div>'}${lista.length > 300 ? `<div class="empty">Se muestran 300 de ${lista.length} pedidos · elige un rango de fechas para ver el resto (el Excel los incluye todos)</div>` : ''}</div>`);
-  wireGo(el);
+      <div class="list">${html || '<div class="empty">No hay pedidos aquí</div>'}${lista.length > 300 ? `<div class="empty">Se muestran 300 de ${lista.length} pedidos · elige un rango de fechas para ver el resto (el Excel los incluye todos)</div>` : ''}</div>`;
+    wireGo(res);
+    res.querySelector('[data-exportar]')?.addEventListener('click', async e => {
+      const btn = e.currentTarget; if (btn.disabled) return; btn.disabled = true;
+      // se exporta exactamente la selección (filtro y búsqueda), en orden cronológico; no se marca nada
+      const sel = [...lista].sort((a, b) => a.fecha.localeCompare(b.fecha));
+      const sufijo = st.vista === 'todos' ? 'todos_' + hoy : r[0] === r[1] ? r[0] : `${r[0]}_a_${r[1]}`;
+      await XIO.compartir(XIO.pedidosXlsx(sel, byId), `pedidos_${sufijo}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Pedidos ' + sufijo.replace(/_/g, ' '));
+      btn.disabled = false;
+    });
+  };
+  pintar();
   el.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { st.vista = b.dataset.v; APP.render(); });
-  el.querySelector('#pq').addEventListener('input', U.debounce(e => { st.q = e.target.value; APP.render().then(() => { const i = document.querySelector('#pq'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }); }, 300));
+  el.querySelector('#pq').addEventListener('input', U.debounce(e => { st.q = e.target.value; pintar(); }, 150));
   requestAnimationFrame(() => { const on = el.querySelector('.chips .chip.on'); if (on) on.parentElement.scrollLeft = on.offsetLeft - 20; });
   [['pdd', 'desde'], ['pdh', 'hasta']].forEach(([id, k]) => el.querySelector('#' + id)?.addEventListener('change', e => { if (e.target.value) { st[k] = e.target.value; APP.render(); } }));
-  el.querySelector('[data-exportar]')?.addEventListener('click', async e => {
-    const btn = e.currentTarget; if (btn.disabled) return; btn.disabled = true;
-    // se exporta exactamente la selección del filtro, en orden cronológico; no se marca nada
-    const sel = [...lista].sort((a, b) => a.fecha.localeCompare(b.fecha));
-    const sufijo = st.vista === 'todos' ? 'todos_' + hoy : r[0] === r[1] ? r[0] : `${r[0]}_a_${r[1]}`;
-    await XIO.compartir(XIO.pedidosXlsx(sel, byId), `pedidos_${sufijo}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Pedidos ' + sufijo.replace(/_/g, ' '));
-    btn.disabled = false;
-  });
   return el;
 };
 

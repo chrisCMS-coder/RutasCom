@@ -11,7 +11,7 @@ Application mobile (PWA) de fiches clients et de tournées de visites commercial
 - **Pedidos** : saisie depuis la fiche, « Validar pedido », lecture puis « Modificar », export Excel de la sélection ou d'une commande (partage WhatsApp, Gmail, Drive…).
 - **Tareas** : à faire avec date optionnelle et client, dictée, depuis la fiche ou la fenêtre « Registrar visita ».
 - **Ventas** : import des colonnes mensuelles de l'Excel, totaux annuels, comparaison à période égale, graphique, par chaîne, par zone ; taille (petit/moyen/grand) et inactifs recalculés une fois par an.
-- **Ajustes** : thème (auto/clair/sombre), import clients et catalogue, export, copie de sauvegarde et copie en ligne (Supabase), PIN, horaires par défaut, tournées, alertes, seuils de taille, textes des messages, zones, données de test.
+- **Ajustes** : thème (auto/clair/sombre), import clients (une fois, au départ) et catalogue, directement dans l'écran, export, copie de sauvegarde et copie en ligne (Supabase), PIN, horaires par défaut, tournées, alertes, seuils de taille, textes des messages, zones, données de test.
 
 ## Mettre en ligne (une fois)
 

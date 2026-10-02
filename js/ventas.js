@@ -43,7 +43,8 @@ const VENTAS = {
     const total = VENTAS.totalAnio(c.ventas, anio);
     const antes = c.tamano;
     c.tamano = VENTAS.tamanoDe(total, u); c.tamanoOrigen = 'ventas';
-    c.inactivo = total === 0; // negativo = activo (una devolución es relación comercial)
+    // negativo = activo (una devolución es relación comercial); quien empezó a comprar después de ese año tampoco es inactivo
+    c.inactivo = total === 0 && !Object.entries(c.ventas).some(([k, x]) => x && +k.slice(0, 4) > anio);
     c.clasificacion = anio;
     return antes !== c.tamano;
   },
