@@ -7,6 +7,9 @@ const U = {
     });
   },
   now() { return new Date().toISOString(); },
+  /* fecha de modificación: ahora, pero siempre después de la versión anterior (un móvil con el reloj atrasado
+     que edita una versión bajada de otro aparato no debe quedar «más antiguo» y ser ignorado por el servidor) */
+  despues(prev) { const t = new Date().toISOString(); return prev && t <= prev ? new Date(new Date(prev).getTime() + 1).toISOString() : t; },
   today() { return U.isoDate(new Date()); },
   isoDate(d) {
     const z = n => String(n).padStart(2, '0');
@@ -93,8 +96,13 @@ const U = {
     const dest = c.lat && c.lng && (c.geocodeStatus === 'manual' || !d.full) ? `${c.lat},${c.lng}` : encodeURIComponent(texto + ', España');
     return `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
   },
-  /* Estado de visita: verde / ambar / rojo / azul (sin visitar) */
+  /* Estado de visita: verde / ambar / rojo / azul (sin visitar). Prospectos e inactivos van aparte
+     (sin alertas de visita): key 'prospecto' / 'inactivo'. */
   estado(c, hoy) {
+    if (c.prospecto || c.inactivo) {
+      const dias = c.ultimaVisita ? U.daysSince(c.ultimaVisita) : null;
+      return c.prospecto ? { key: 'prospecto', dias, label: 'Prospecto', limite: null } : { key: 'inactivo', dias, label: 'Inactivo', limite: null };
+    }
     if (!c.ultimaVisita) return { key: 'azul', dias: null, label: 'Sin visitar', limite: c.frecuenciaDias || 30 };
     const dias = U.daysSince(c.ultimaVisita);
     const limite = c.frecuenciaDias || 30;
@@ -107,9 +115,55 @@ const U = {
   },
   estadoFrase(c) {
     const e = U.estado(c);
+    if (e.key === 'prospecto' || e.key === 'inactivo') return e.dias == null ? (e.key === 'prospecto' ? 'Prospecto · todavía sin visita' : 'Inactivo · sin visitas registradas') : `${e.label} · última visita hace ${e.dias} días`;
     if (e.key === 'azul') return 'Todavía sin visita registrada';
     if (e.dias === 0) return 'Visitado hoy';
     if (e.dias === 1) return 'Visitado ayer';
     return `Lleva ${e.dias} días sin visita`;
+  },
+
+  /* ---------- números, teléfonos, fechas ---------- */
+  fmtEur(n, dec = 0) { return n == null || isNaN(n) ? '—' : Number(n).toLocaleString('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: dec, maximumFractionDigits: dec }); },
+  fmtPct(x) { return x == null || !isFinite(x) ? '—' : (x > 0 ? '+' : '') + Math.round(x * 100) + ' %'; },
+  digitos(t) { return String(t || '').replace(/\D/g, ''); },
+  /* Número internacional sin '+' para wa.me / sms (España por defecto): '34612345678' o null */
+  telIntl(t) {
+    let d = U.digitos(t); if (!d) return null;
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.length === 9 && /^[6789]/.test(d)) d = '34' + d;
+    return d.length >= 11 ? d : null;
+  },
+  esMovil(t) { const d = U.telIntl(t); return !!d && /^34[67]\d{8}$/.test(d); },
+  /* Móvil del cliente: el campo «Móvil» o, si no lo tiene, el teléfono cuando es un móvil */
+  movil(c) { return c.movil || (U.esMovil(c.telefono) ? c.telefono : ''); },
+  /* Cómo avisar: 'whatsapp' | 'sms' | null (sin móvil) */
+  canal(c) { const m = U.movil(c); if (!m || !U.telIntl(m)) return null; return c.whatsapp === false ? 'sms' : 'whatsapp'; },
+  urlMensaje(c, texto) {
+    const n = U.telIntl(U.movil(c)), canal = U.canal(c); if (!canal) return null;
+    return canal === 'whatsapp' ? `https://wa.me/${n}?text=${encodeURIComponent(texto)}` : `sms:+${n}?body=${encodeURIComponent(texto)}`;
+  },
+  abrir(url) { if (/^(sms|tel):/.test(url)) location.href = url; else window.open(url, '_blank', 'noopener'); },
+  mesLabel(ym, largo) {
+    const [y, m] = ym.split('-').map(Number);
+    return new Date(y, m - 1, 1).toLocaleDateString('es-ES', largo ? { month: 'long', year: 'numeric' } : { month: 'short' }).replace('.', '');
+  },
+  /* «hoy» / «mañana» / «jueves 9» (o en catalán) para el día de la ruta visto desde hoy */
+  diaRelativo(iso, idioma = 'es') {
+    const d = U.daysBetween(new Date(), U.parseDate(iso));
+    if (d === 0) return idioma === 'ca' ? 'avui' : 'hoy';
+    if (d === 1) return idioma === 'ca' ? 'demà' : 'mañana';
+    return U.parseDate(iso).toLocaleDateString(idioma === 'ca' ? 'ca-ES' : 'es-ES', { weekday: 'long', day: 'numeric' });
+  },
+  horaTexto(min) { if (min == null) return ''; const h = Math.floor(min / 60), m = Math.round(min % 60); return m ? `${h}:${String(m).padStart(2, '0')}h` : `${h}h`; },
+  /* ---------- categorías y zonas ---------- */
+  categoria(c) { return c.prospecto ? 'prospecto' : c.inactivo ? 'inactivo' : 'cliente'; },
+  /* Comarca: la escrita en la ficha o, si no, por el municipio y, si no, por el código postal (tabla oficial) */
+  comarca(c) {
+    if (c.comarca) return c.comarca;
+    if (typeof COMARCAS === 'undefined') return '';
+    const m = COMARCAS.municipio[U.norm(c.localidad)];
+    if (m != null) return COMARCAS.nombres[m];
+    const k = COMARCAS.cp[String(c.cp || '').padStart(5, '0')];
+    return k != null ? COMARCAS.nombres[k] : '';
   },
 };

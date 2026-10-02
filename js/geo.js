@@ -8,9 +8,12 @@ const GEO = {
     GEO._last = Date.now();
   },
 
-  /* Devuelve {lat, lng, precision} o null. precision: 'exacta' | 'calle' | 'localidad' */
+  /* Devuelve {lat, lng, precision} o null si la dirección no existe. precision: 'exacta' | 'calle' | 'localidad'.
+     Lanza un error si no se pudo preguntar (sin conexión, servicio saturado): así no se marca como «no encontrada». */
   async geocode(c) {
     const dir = U.direccion(c);
+    let fallos = 0, respuestas = 0; // respuestas: servicios que contestaron (con o sin resultado)
+    const comprobar = r => { if (r.ok) respuestas++; else if (r.status === 429 || r.status >= 500) fallos++; return r.ok; };
     // 1) Nominatim estructurado
     try {
       await GEO._throttle(1100);
@@ -19,7 +22,7 @@ const GEO = {
       if (c.cp) p.set('postalcode', c.cp);
       if (c.localidad) p.set('city', c.localidad);
       const r = await fetch('https://nominatim.openstreetmap.org/search?' + p, { headers: { 'Accept-Language': 'es' } });
-      if (r.ok) {
+      if (comprobar(r)) {
         const j = await r.json();
         if (j[0]) {
           const t = j[0].addresstype || j[0].type;
@@ -27,13 +30,13 @@ const GEO = {
           if (precision !== 'localidad') return { lat: +j[0].lat, lng: +j[0].lon, precision };
         }
       }
-    } catch (e) { console.warn('nominatim', e); }
+    } catch (e) { fallos++; console.warn('nominatim', e); }
     // 2) Photon (texto libre, sesgado a Cataluña)
     try {
       await GEO._throttle(600);
       const q = [dir.l1, c.cp, c.localidad].filter(Boolean).join(' ');
       const r = await fetch('https://photon.komoot.io/api/?' + new URLSearchParams({ q, limit: '1', lat: '41.6', lon: '1.9' }));
-      if (r.ok) {
+      if (comprobar(r)) {
         const j = await r.json();
         const f = j.features && j.features[0];
         if (f) {
@@ -43,7 +46,7 @@ const GEO = {
           if (sameCp && precision !== 'localidad') return { lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], precision };
         }
       }
-    } catch (e) { console.warn('photon', e); }
+    } catch (e) { fallos++; console.warn('photon', e); }
     // 3) Solo localidad (para poder situarlo aproximadamente)
     try {
       await GEO._throttle(1100);
@@ -51,15 +54,19 @@ const GEO = {
       if (c.cp) p.set('postalcode', c.cp);
       if (c.localidad) p.set('city', c.localidad);
       const r = await fetch('https://nominatim.openstreetmap.org/search?' + p);
-      if (r.ok) { const j = await r.json(); if (j[0]) return { lat: +j[0].lat, lng: +j[0].lon, precision: 'localidad' }; }
-    } catch (e) { console.warn('nominatim2', e); }
+      if (comprobar(r)) { const j = await r.json(); if (j[0]) return { lat: +j[0].lat, lng: +j[0].lon, precision: 'localidad' }; }
+    } catch (e) { fallos++; console.warn('nominatim2', e); }
+    // solo es «sin conexión» si ningún servicio contestó; si alguno dijo «no existe», la dirección no se encontró
+    if (fallos && !respuestas) throw new Error('Sin conexión con el buscador de direcciones');
     return null;
   },
 
   /* Geocodifica una dirección libre (para el origen/destino de una ruta) */
+  /* Lanza un error si no hay conexión; null si el lugar no existe */
   async geocodeTexto(texto) {
     await GEO._throttle(1100);
-    const r = await fetch('https://nominatim.openstreetmap.org/search?' + new URLSearchParams({ q: texto + ', España', format: 'jsonv2', limit: '1', countrycodes: 'es' }));
+    const r = await fetch('https://nominatim.openstreetmap.org/search?' + new URLSearchParams({ q: texto + ', España', format: 'jsonv2', limit: '1', countrycodes: 'es' })).catch(() => null);
+    if (!r || !r.ok) throw new Error('Sin conexión con el buscador de direcciones');
     const j = await r.json();
     return j[0] ? { lat: +j[0].lat, lng: +j[0].lon, nombre: j[0].display_name.split(',').slice(0, 2).join(',') } : null;
   },
@@ -73,7 +80,7 @@ const GEO = {
         dur.push([]); dist.push([]);
         for (let j = 0; j < n; j++) {
           const km = i === j ? 0 : U.haversineKm(points[i], points[j]) * 1.3;
-          dist[i].push(km); dur[i].push(km / 55 * 60 + (i === j ? 0 : 3));
+          dist[i].push(km); dur[i].push(km / 55 * 60); // el tiempo hasta el coche se suma aparte (Ajustes)
         }
       }
       return { dur, dist, estimado: true };
