@@ -79,7 +79,7 @@ const GEO = {
         dur.push([]); dist.push([]);
         for (let j = 0; j < n; j++) {
           const km = i === j ? 0 : U.haversineKm(points[i], points[j]) * 1.3;
-          dist[i].push(km); dur[i].push(km / 55 * 60 + (i === j ? 0 : 3));
+          dist[i].push(km); dur[i].push(km / 55 * 60); // el tiempo hasta el coche se suma aparte (Ajustes)
         }
       }
       return { dur, dist, estimado: true };

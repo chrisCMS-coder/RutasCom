@@ -9,6 +9,8 @@ db.version(1).stores({
   ajustes: 'key',
   outbox: '++n, kind, id',
 });
+db.version(2).stores({ tareas: 'id, fecha, clienteId, hechaAt, updatedAt, deleted' });
+const TABLAS = ['clientes', 'visitas', 'pedidos', 'catalogo', 'rutas', 'tareas'];
 
 const DB = {
   /* ---------- ajustes ---------- */
@@ -60,6 +62,14 @@ const DB = {
     return rs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0] || null;
   },
   async catalogo() { return db.catalogo.toArray(); },
+  /* fecha (ISO) del último pedido de cada cliente */
+  async ultimosPedidos() {
+    const m = new Map();
+    for (const p of await db.pedidos.toArray()) if (!p.deleted && (!m.has(p.clienteId) || m.get(p.clienteId) < p.fecha)) m.set(p.clienteId, p.fecha);
+    return m;
+  },
+  async tareas() { return (await db.tareas.toArray()).filter(t => !t.deleted); },
+  async tareasAbiertas(clienteId) { return (await DB.tareas()).filter(t => !t.hechaAt && (!clienteId || t.clienteId === clienteId)); },
 
   /* ---------- registrar visita ---------- */
   async registrarVisita({ clienteId, resultado, nota, pedidoId, fecha }) {
@@ -77,17 +87,17 @@ const DB = {
 
   /* ---------- copia de seguridad ---------- */
   /* Ajustes propios de este móvil o de la cuenta: no viajan en la copia (el PIN, la identidad y el punto de sincronización) */
-  AJUSTES_LOCALES: ['supabase', 'session', 'pin', 'syncUid', 'syncDesde', 'syncUltimo', 'syncEmail', 'syncSalida', 'lastBackup'],
+  AJUSTES_LOCALES: ['supabase', 'session', 'pin', 'syncUid', 'syncDesde', 'syncUltimo', 'syncEmail', 'syncSalida', 'lastBackup', 'horarioV2'],
   async exportAll() {
     const out = { app: 'rutas-comerciales', version: 1, exportedAt: U.now() };
-    for (const t of ['clientes', 'visitas', 'pedidos', 'catalogo', 'rutas', 'ajustes']) out[t] = await db[t].toArray();
+    for (const t of [...TABLAS, 'ajustes']) out[t] = await db[t].toArray();
     out.ajustes = out.ajustes.filter(a => !DB.AJUSTES_LOCALES.includes(a.key));
     return out;
   },
   async importAll(data, { replace = false } = {}) {
     if (!data || data.app !== 'rutas-comerciales') throw new Error('El archivo no es una copia de esta app');
-    await db.transaction('rw', db.clientes, db.visitas, db.pedidos, db.catalogo, db.rutas, db.ajustes, db.outbox, async () => {
-      for (const t of ['clientes', 'visitas', 'pedidos', 'rutas']) {
+    await db.transaction('rw', [db.clientes, db.visitas, db.pedidos, db.catalogo, db.rutas, db.tareas, db.ajustes, db.outbox], async () => {
+      for (const t of ['clientes', 'visitas', 'pedidos', 'rutas', 'tareas']) {
         if (replace) await db[t].clear();
         const recs = data[t] || [];
         for (const r of recs) {
@@ -101,7 +111,7 @@ const DB = {
     DB.changed('all');
   },
   async wipe() {
-    await Promise.all(['clientes', 'visitas', 'pedidos', 'catalogo', 'rutas', 'outbox'].map(t => db[t].clear()));
+    await Promise.all([...TABLAS, 'outbox'].map(t => db[t].clear()));
     // sin datos locales, la próxima sincronización debe bajarlo todo otra vez
     await DB.set('syncDesde', null); await DB.set('syncUltimo', null);
     if (typeof SYNC !== 'undefined') SYNC.ultimo = null;
@@ -109,7 +119,7 @@ const DB = {
   },
   async counts() { // sin contar lo borrado (los borrados son lógicos)
     const vivos = t => db[t].filter(r => !r.deleted).count();
-    const [c, v, p, k, r] = await Promise.all([vivos('clientes'), vivos('visitas'), vivos('pedidos'), db.catalogo.count(), vivos('rutas')]);
-    return { clientes: c, visitas: v, pedidos: p, catalogo: k, rutas: r };
+    const [c, v, p, k, r, t] = await Promise.all([vivos('clientes'), vivos('visitas'), vivos('pedidos'), db.catalogo.count(), vivos('rutas'), vivos('tareas')]);
+    return { clientes: c, visitas: v, pedidos: p, catalogo: k, rutas: r, tareas: t };
   },
 };

@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#17323F">
+<meta name="theme-color" content="#FFFFFF">
+<script>/* tema antes de pintar nada (evita el destello claro de noche) */try{var t=localStorage.getItem('tema');if(t==='dark'||t==='light')document.documentElement.dataset.theme=t;}catch(e){}</script>
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -23,15 +24,18 @@
 <script src="vendor/leaflet.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/supabase.js"></script>
+<script src="data/comarcas.js"></script>
 <script src="js/util.js"></script>
 <script src="js/db.js"></script>
 <script src="js/geo.js"></script>
 <script src="js/route.js"></script>
+<script src="js/ventas.js"></script>
 <script src="js/xlsxio.js"></script>
 <script src="js/sync.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/screens.js"></script>
 <script src="js/screens2.js"></script>
+<script src="js/screens3.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

@@ -38,13 +38,16 @@ const XIO = {
     ['cp', 'Código postal', ['cp', 'codigo postal', 'código postal', 'c.p.', 'postal', 'zip', 'codi postal']],
     ['localidad', 'Localidad', ['localidad', 'poblacion', 'población', 'ciudad', 'municipio', 'city', 'poblacio', 'població', 'town', 'municipi', 'localitat']],
     ['provincia', 'Provincia', ['provincia', 'province']],
-    ['telefono', 'Teléfono', ['telefono', 'teléfono', 'tel', 'phone', 'movil', 'móvil', 'telefon', 'mobil', 'tlf', 'tfno']],
+    ['telefono', 'Teléfono (fijo)', ['telefono', 'teléfono', 'tel', 'phone', 'telefon', 'tlf', 'tfno', 'fijo']],
+    ['movil', 'Móvil (WhatsApp)', ['movil', 'móvil', 'mobil', 'celular', 'whatsapp', 'telefono movil', 'tel movil']],
     ['contacto', 'Contacto', ['contacto', 'persona', 'contact', 'responsable', 'nombre contacto', 'contacte']],
     ['email', 'Email', ['email', 'correo', 'e-mail', 'mail']],
     ['tamano', 'Tamaño', ['tamaño', 'tamano', 'tamany', 'size', 'categoria', 'categoría', 'tipo']],
     ['frecuencia', 'Frecuencia de visita', ['frecuencia', 'freq', 'periodicidad', 'cada']],
     ['ultimaVisita', 'Última visita', ['ultima visita', 'última visita', 'visita', 'last visit', 'darrera visita']],
     ['nota', 'Notas', ['nota', 'notas', 'observaciones', 'comentarios', 'comments', 'notes', 'observacions']],
+    ['codAgrup', 'Cadena (CodAgrup)', ['codagrup', 'cod agrup', 'cod. agrup', 'agrupacion', 'agrupación', 'cadena', 'grupo', 'cod grupo']],
+    ['totalVentas', 'Total ventas', ['total ventas', 'ventas', 'total', 'facturacion', 'facturación', 'importe total']],
   ],
   /* Asignación global: se calculan todas las parejas (campo, columna) y se reparten de mejor a peor
      puntuación, comparando palabras enteras (así «Localidad» no se toma por un «id», ni «Código postal»
@@ -106,6 +109,8 @@ const XIO = {
     if (m && +m[1] > 30000 && +m[1] < 75000) { const f = new Date(Date.UTC(1899, 11, 30) + (+m[1]) * 86400000); return valida(f.getUTCFullYear(), f.getUTCMonth() + 1, f.getUTCDate()); }
     return null;
   },
+  /* CodAgrup: «0», «-», espacios o vacío = sin cadena */
+  limpiarCodAgrup(v) { const t = String(v == null ? '' : v).trim(); return !t || /^[-–—0.\s]+$/.test(t) ? '' : t; },
   /* Precio: admite 18,90 · 18.90 · 1.234,50 · 1,234.50 · «18,90 €» */
   parsePrecio(v) {
     let s = String(v == null ? '' : v).replace(/[^\d.,-]/g, ''); if (!s) return null;
@@ -117,7 +122,8 @@ const XIO = {
 
   /* Convierte filas Excel mapeadas en clientes (sin guardar). tamano y frecuenciaDias quedan en null si la
      columna no está o no se entiende: los valores por defecto solo se aplican al crear un cliente nuevo. */
-  filasAClientes(rows, map) {
+  /* columnasMes: [{h, ym}] de VENTAS.columnasMes: cada cliente recibe ventas = { 'YYYY-MM': importe } (vacío = 0) */
+  filasAClientes(rows, map, columnasMes = []) {
     const g = (r, campo) => String((map[campo] && r[map[campo]] != null) ? r[map[campo]] : '').trim();
     return rows.map(r => {
       const nombre = g(r, 'nombre'); if (!nombre) return null;
@@ -130,6 +136,8 @@ const XIO = {
         tamano: XIO.parseTamano(g(r, 'tamano')),
         frecuenciaDias: XIO.parseFrecuencia(g(r, 'frecuencia')),
         ultimaVisita: XIO.parseFecha(g(r, 'ultimaVisita')), nota: g(r, 'nota'),
+        movil: g(r, 'movil'), codAgrup: XIO.limpiarCodAgrup(g(r, 'codAgrup')), totalVentas: map.totalVentas ? XIO.parsePrecio(g(r, 'totalVentas')) : null,
+        ventas: columnasMes.length ? Object.fromEntries(columnasMes.map(({ h, ym }) => [ym, XIO.parsePrecio(r[h]) || 0])) : null,
       };
     }).filter(Boolean);
   },
@@ -186,7 +194,8 @@ const XIO = {
     return XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   },
   clientesXlsx(clientes) {
-    const rows = clientes.map(c => ({ 'Código': c.codigo || '', 'Nombre': c.nombre, 'Dirección': U.direccion(c).l1, 'CP': c.cp, 'Localidad': c.localidad, 'Provincia': c.provincia || '', 'Teléfono': c.telefono || '', 'Contacto': c.contacto || '', 'Tamaño': U.tamanoLabel(c.tamano), 'Frecuencia': U.frecuenciaLabel(c.frecuenciaDias), 'Última visita': c.ultimaVisita || '', 'Estado': U.estado(c).label, 'Notas': c.nota || '', 'Lat': c.lat || '', 'Lng': c.lng || '' }));
+    const anio = new Date().getFullYear();
+    const rows = clientes.map(c => ({ 'Código': c.codigo || '', 'Nombre': c.nombre, 'Dirección': U.direccion(c).l1, 'CP': c.cp, 'Localidad': c.localidad, 'Comarca': U.comarca(c), 'Provincia': c.provincia || '', 'Teléfono': c.telefono || '', 'Móvil': c.movil || '', 'Contacto': c.contacto || '', 'Tamaño': U.tamanoLabel(c.tamano), 'Cadena': c.codAgrup || '', 'Categoría': c.prospecto ? 'Prospecto' : c.inactivo ? 'Inactivo' : 'Cliente', [`Ventas ${anio - 1}`]: VENTAS.tieneDatos(c) ? VENTAS.totalAnio(c.ventas, anio - 1) : '', [`Ventas ${anio}`]: VENTAS.tieneDatos(c) ? VENTAS.totalAnio(c.ventas, anio) : '', 'Frecuencia': U.frecuenciaLabel(c.frecuenciaDias), 'Última visita': c.ultimaVisita || '', 'Estado': U.estado(c).label, 'Notas': c.nota || '', 'Lat': c.lat || '', 'Lng': c.lng || '' }));
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Clientes');
     return XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   },

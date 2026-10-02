@@ -1,6 +1,6 @@
 /* Arranque, navegación y lógica compartida (rutas, geocodificación en cola). */
 const APP = {
-  VERSION: '1.4.0',
+  VERSION: '1.5.0',
   state: { name: 'hoy', params: {} },
   TABS: [['hoy', 'Hoy', I.home], ['clientes', 'Clientes', I.users], ['mapa', 'Mapa', I.map], ['rutas', 'Rutas', I.route], ['pedidos', 'Pedidos', I.box]],
   ajustes: {},
@@ -21,6 +21,12 @@ const APP = {
     window.addEventListener('popstate', () => {
       if (UI._ignorePop) { UI._ignorePop = false; const r = UI._popResolve; UI._popResolve = null; if (r) r(); return; }
       if (UI._sheet) { UI._sheet.el.remove(); const s = UI._sheet; UI._sheet = null; if (s.onClose) s.onClose(); if (APP._dirty) { APP._dirty = false; APP.refrescar(); } return; }
+      // formulario con cambios sin guardar (p. ej. un pedido): se vuelve a la pantalla y se pregunta
+      if (APP._salida && APP._salida.sucio()) {
+        const salida = APP._salida; history.pushState(APP.state, '');
+        UI.confirm('¿Descartar cambios?', 'Los cambios no se guardarán.', { ok: 'Descartar', danger: true }).then(ok => { if (ok && APP._salida === salida) { APP._salida = null; history.back(); } });
+        return;
+      }
       const st = history.state && history.state.name ? history.state : { name: 'hoy', params: {} };
       APP.state = st; APP.render();
     });
@@ -32,6 +38,7 @@ const APP = {
       if (APP.pin && Date.now() - (APP._hiddenAt || 0) > 5 * 60 * 1000) APP.lock(); else APP.refrescar();
     });
     history.replaceState({ name: 'hoy', params: {} }, '');
+    await APP.migrarHorarios();
     await SYNC.init();
     if (SYNC.estado === 'sin-sesion') await APP.login();
     APP.pin = await DB.get('pin', null);
@@ -141,9 +148,36 @@ const APP = {
       origen: { nombre: 'Barcelona', lat: 41.3874, lng: 2.1686 }, salida: '08:30', limite: '18:00', duracion: 30, frecuenciaDias: 30,
       horario: { abre: '09:30', cierra: '20:00', cierraMediodia: true, mediodiaDe: '13:30', mediodiaA: '17:00', lunesCerrado: false, cierraSabado: false },
       nombre: '',
+      tema: 'auto', alertaMeses: 6, tiempoCoche: 10, comida: 'auto', umbralPequeno: 900, umbralMediano: 2500,
+      plantilla: 'estandar', plantillas: APP.PLANTILLAS, zonas: [], clasificacionAnio: null,
     };
     const a = await DB.get('ajustes', {});
-    APP.ajustes = Object.assign({}, def, a, { horario: Object.assign({}, def.horario, a.horario || {}) });
+    APP.ajustes = Object.assign({}, def, a, { horario: Object.assign({}, def.horario, a.horario || {}), plantillas: Object.assign({}, def.plantillas, a.plantillas || {}) });
+    APP.aplicarTema(APP.ajustes.tema);
+  },
+  /* Modelos del mensaje previo a la visita, en castellano y catalán. Variables: {nombre_contacto} {dia} {hora} {desde} {hasta} {tienda} */
+  PLANTILLAS: {
+    estandar: { es: 'Hola {nombre_contacto}, {dia} paso por la librería sobre las {hora}. ¿Te va bien?', ca: 'Hola {nombre_contacto}, {dia} passo per la llibreria cap a les {hora}. Et va bé?' },
+    franja: { es: 'Hola {nombre_contacto}, {dia} paso por la librería entre las {desde} y las {hasta}. ¿Te va bien?', ca: 'Hola {nombre_contacto}, {dia} passo per la llibreria entre les {desde} i les {hasta}. Et va bé?' },
+    relance: { es: 'Hola {nombre_contacto}, ¿sigue bien que pase {dia} sobre las {hora}?', ca: 'Hola {nombre_contacto}, encara et va bé que passi {dia} cap a les {hora}?' },
+  },
+  /* Tema: 'auto' (sigue al sistema), 'light', 'dark'. Cambia sin recargar, también los mapas y la barra de Android. */
+  aplicarTema(tema) {
+    const root = document.documentElement;
+    if (tema === 'light' || tema === 'dark') root.dataset.theme = tema; else delete root.dataset.theme;
+    try { localStorage.setItem('tema', tema || 'auto'); } catch (e) { }
+    const meta = document.querySelector('meta[name=theme-color]'); if (meta) meta.content = getComputedStyle(root).getPropertyValue('--bg').trim() || '#FFFFFF';
+    if (!APP._temaEscucha) { APP._temaEscucha = true; matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => APP.aplicarTema(APP.ajustes.tema)); }
+    UI.temaCambiado();
+  },
+  cssVar(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); },
+  /* Una sola vez: los horarios antiguos (interruptores) pasan al modelo nuevo con las franjas reales de cada día */
+  async migrarHorarios() {
+    if (await DB.get('horarioV2', false)) return;
+    const cs = (await db.clientes.toArray()).filter(c => c.horario && !c.horario.modo);
+    for (const c of cs) c.horario = ROUTE.convertirHorario(c.horario, APP.ajustes.horario);
+    if (cs.length) await DB.bulkSave('clientes', cs);
+    await DB.set('horarioV2', true);
   },
   async guardarAjustes(patch) { Object.assign(APP.ajustes, patch); await DB.set('ajustes', APP.ajustes); },
 
@@ -166,6 +200,7 @@ const APP = {
     const app = document.getElementById('app');
     const scroll = app.querySelector('.screen')?.scrollTop || 0;
     let el;
+    APP._salida = null; // la pantalla nueva vuelve a poner su guardia si la necesita
     try { el = await fn(params); } catch (e) { console.error(e); el = UI.el(`<div class="screen"><div class="empty">Error: ${U.esc(e.message)}</div></div>`); }
     if (APP.state.name !== name) return; // navegó mientras cargaba
     const prev = app.querySelector('.screen'); if (prev && prev._cleanup) { try { prev._cleanup(); } catch (e) { } }
@@ -176,8 +211,7 @@ const APP = {
     if (el._afterMount) el._afterMount();
   },
   async nav(active) {
-    const pend = (await DB.pedidosPendientes()).length;
-    const nav = UI.el(`<nav class="tabs">${APP.TABS.map(([k, label, icon]) => `<button class="${k === active ? 'on' : ''}" data-tab="${k}">${I.svg(icon, 22, k === active ? 2.2 : 2)}${label}${k === 'pedidos' && pend ? `<span class="badge">${pend}</span>` : ''}</button>`).join('')}</nav>`);
+    const nav = UI.el(`<nav class="tabs">${APP.TABS.map(([k, label, icon]) => `<button class="${k === active ? 'on' : ''}" data-tab="${k}">${I.svg(icon, 22, k === active ? 2.2 : 2)}${label}</button>`).join('')}</nav>`);
     nav.querySelectorAll('button').forEach(b => b.onclick = () => APP.tab(b.dataset.tab));
     return nav;
   },
@@ -195,7 +229,36 @@ const APP = {
       salida = Math.max(salida, ult.hechoA != null ? ult.hechoA : (ult.fin || salida));
     }
     if (ruta.fecha === U.today()) { const n = new Date(); salida = Math.max(salida, n.getHours() * 60 + n.getMinutes()); }
-    return { inicio, salida };
+    return { inicio, salida, desdeCliente: inicio !== ruta.origen };
+  },
+  /* Matriz de tiempos con el «tiempo hasta el coche» sumado a cada trayecto entre dos visitas
+     (no a la salida de casa ni a la vuelta final; sí a la salida desde un cliente cuando se recalcula a mitad de ruta). */
+  async matrizRuta(points, ruta, desdeCliente) {
+    const m = await GEO.matrix(points);
+    const tc = +(ruta.tiempoCoche ?? APP.ajustes.tiempoCoche ?? 10) || 0, n = points.length;
+    if (tc) m.dur = m.dur.map((fila, i) => fila.map((d, j) => (i !== j && j >= 1 && j <= n - 2 && (i >= 1 && i <= n - 2 || (i === 0 && desdeCliente)) ? d + tc : d)));
+    return m;
+  },
+  /* Pausa para comer: 'auto' = jornada continua si se puede (la comida, si la hay, es un hueco natural del mediodía);
+     'siempre' = 1 h entre las 13:00 y las 16:00, en el mejor momento; 'no' = sin pausa. */
+  PAUSA: { duracion: 60, desde: 13 * 60, hasta: 16 * 60 },
+  pausaStop(inicio) { return { id: '__pausa', sinLugar: true, duracion: APP.PAUSA.duracion, ventanas: [[APP.PAUSA.desde, APP.PAUSA.hasta]], penaliza: 15, lat: inicio.lat, lng: inicio.lng }; },
+  /* Marca en la ruta la pausa (fija) o el hueco natural para comer, o la jornada continua */
+  _anotarComida(ruta, plan, iPausa) {
+    ruta.pausa = null; ruta.pausaNoCabe = false;
+    const pe = iPausa >= 0 ? plan.find(pl => pl.i === iPausa) : null;
+    if (pe) ruta.pausa = { inicio: pe.inicio, fin: pe.fin, tipo: 'fija' };
+    else if (iPausa >= 0) ruta.pausaNoCabe = true;
+    else if ((ruta.comida || APP.ajustes.comida || 'auto') === 'auto') {
+      let mejor = null;
+      for (const pl of plan) {
+        const a = Math.max(pl.llegada, APP.PAUSA.desde), b = Math.min(pl.inicio, APP.PAUSA.hasta);
+        if (b - a >= 45 && (!mejor || b - a > mejor.fin - mejor.inicio)) mejor = { inicio: a, fin: b, tipo: 'libre' };
+      }
+      ruta.pausa = mejor;
+    }
+    const visitas = plan.filter(pl => pl.i !== iPausa);
+    ruta.jornadaContinua = !ruta.pausa && visitas.length > 0 && visitas[0].inicio < APP.PAUSA.desde && visitas[visitas.length - 1].fin > APP.PAUSA.desde + 60;
   },
   /* Replanifica las visitas pendientes. Las que no caben en el horario o no tienen ubicación se quedan
      en la ruta marcadas con noCabe (no se pierden): se vuelven a intentar en cada recálculo. */
@@ -206,24 +269,67 @@ const APP = {
     const pendientes = ruta.paradas.filter(p => !p.hecho && byId[p.clienteId].lat);
     const sinCoord = ruta.paradas.filter(p => !p.hecho && !byId[p.clienteId].lat);
     const dow = U.parseDate(ruta.fecha).getDay();
-    const { inicio, salida } = APP.reanudacion(ruta, byId);
+    const { inicio, salida, desdeCliente } = APP.reanudacion(ruta, byId);
     const stops = pendientes.map(p => { const c = byId[p.clienteId]; let hf = p.horaFija != null ? U.parseTime(p.horaFija) : null; if (hf != null && hf + 10 < salida) hf = null; /* cita ya pasada: se trata como visita normal */
       return { id: c.id, lat: c.lat, lng: c.lng, horaFija: hf, duracion: p.duracion || ruta.duracion || APP.ajustes.duracion, ventanas: ROUTE.ventanas(c.horario, APP.ajustes.horario, dow) }; });
+    let iPausa = -1;
+    if ((ruta.comida || APP.ajustes.comida) === 'siempre' && stops.length && salida < APP.PAUSA.hasta - APP.PAUSA.duracion) { iPausa = stops.length; stops.push(APP.pausaStop(inicio)); }
     const points = [inicio, ...stops, ruta.destino];
-    const m = stops.length ? await GEO.matrix(points) : { dur: [[0, 0], [0, 0]], dist: [[0, 0], [0, 0]], estimado: false };
+    const m = stops.length ? await APP.matrizRuta(points, ruta, desdeCliente) : { dur: [[0, 0], [0, 0]], dist: [[0, 0], [0, 0]], estimado: false };
     const r = stops.length ? ROUTE.planificar(stops, { salida, limite: U.parseTime(ruta.limite), dur: m.dur, dist: m.dist }) : { orden: [], plan: [], km: 0, conduccion: 0, fin: salida, ok: true, noCaben: [] };
     const sinHora = { llegada: null, inicio: null, fin: null, viaje: null };
-    const nuevas = r.plan.map(pl => Object.assign({}, pendientes[pl.i], { llegada: pl.llegada, inicio: pl.inicio, fin: pl.fin, viaje: pl.viaje, noCabe: false }));
-    const fuera = [...r.noCaben.map(i => pendientes[i]), ...sinCoord].map(p => Object.assign({}, p, sinHora, { noCabe: true }));
+    const nuevas = r.plan.filter(pl => pl.i !== iPausa).map(pl => Object.assign({}, pendientes[pl.i], { llegada: pl.llegada, inicio: pl.inicio, fin: pl.fin, viaje: pl.viaje, noCabe: false }));
+    const fuera = [...r.noCaben.filter(i => i !== iPausa).map(i => pendientes[i]), ...sinCoord].map(p => Object.assign({}, p, sinHora, { noCabe: true }));
     ruta.paradas = [...hechas, ...nuevas, ...fuera];
     ruta.noCaben = fuera.map(p => p.clienteId);
+    APP._anotarComida(ruta, r.plan, iPausa);
     ruta.km = r.km; ruta.conduccion = r.conduccion; ruta.fin = r.fin; ruta.ok = r.ok && !fuera.length; ruta.estimado = m.estimado;
     await DB.save('rutas', ruta);
     return ruta;
   },
+  /* Recalcula solo las horas, manteniendo el orden (al validar una visita): la ruta no cambia bajo los ojos del comercial.
+     Devuelve {retraso (min, + = tarde), riesgos: [{nombre, hora}], ok} para avisar si algo peligra. */
+  async recalcularHoras(ruta) {
+    const clientes = await DB.clientes(); const byId = Object.fromEntries(clientes.map(c => [c.id, c]));
+    const hechas = ruta.paradas.filter(p => p.hecho), pend = ruta.paradas.filter(p => !p.hecho && !p.noCabe && byId[p.clienteId]?.lat);
+    const resto = ruta.paradas.filter(p => !p.hecho && !pend.includes(p));
+    if (!pend.length) { await DB.save('rutas', ruta); return { retraso: 0, riesgos: [], ok: true }; }
+    const dow = U.parseDate(ruta.fecha).getDay();
+    const { inicio, salida, desdeCliente } = APP.reanudacion(ruta, byId);
+    const stops = pend.map(p => { const c = byId[p.clienteId]; return { lat: c.lat, lng: c.lng, horaFija: p.horaFija ? U.parseTime(p.horaFija) : null, duracion: p.duracion || ruta.duracion, ventanas: ROUTE.ventanas(c.horario, APP.ajustes.horario, dow) }; });
+    let iPausa = -1;
+    if ((ruta.comida || APP.ajustes.comida) === 'siempre' && ruta.pausa && ruta.pausa.tipo === 'fija' && ruta.pausa.fin > salida && salida < APP.PAUSA.hasta - APP.PAUSA.duracion) { iPausa = stops.length; stops.push(APP.pausaStop(inicio)); }
+    const m = await APP.matrizRuta([inicio, ...stops, ruta.destino], ruta, desdeCliente);
+    const opts = { salida, limite: U.parseTime(ruta.limite), dur: m.dur, dist: m.dist };
+    const base = pend.map((_, k) => k);
+    let res = ROUTE.simular(stops, base, opts);
+    if (iPausa >= 0) { // la pausa se coloca en el hueco que mejor encaja, sin cambiar el orden de las visitas
+      let mejor = null;
+      for (let k = 0; k <= base.length; k++) { const r = ROUTE.simular(stops, [...base.slice(0, k), iPausa, ...base.slice(k)], opts); if (!mejor || (r.ok && !mejor.ok) || (r.ok === mejor.ok && r.fin < mejor.fin)) mejor = r; }
+      res = mejor;
+    }
+    const antes = pend[0].inicio;
+    const nuevas = res.plan.filter(pl => pl.i !== iPausa).map(pl => Object.assign({}, pend[pl.i], { llegada: pl.llegada, inicio: pl.inicio, fin: pl.fin, viaje: pl.viaje }));
+    const riesgos = res.plan.filter(pl => pl.i !== iPausa && stops[pl.i].horaFija != null && pl.llegada > stops[pl.i].horaFija + 10).map(pl => ({ nombre: byId[pend[pl.i].clienteId].nombre, hora: pend[pl.i].horaFija }));
+    ruta.paradas = [...hechas, ...nuevas, ...resto];
+    APP._anotarComida(ruta, res.plan, iPausa);
+    ruta.km = res.km; ruta.conduccion = res.conduccion; ruta.fin = res.fin; ruta.ok = res.ok && !resto.length; ruta.estimado = m.estimado;
+    await DB.save('rutas', ruta);
+    return { retraso: antes != null && nuevas[0] ? Math.round(nuevas[0].inicio - antes) : 0, riesgos, ok: res.ok, rutaId: ruta.id };
+  },
+  /* Tras validar una visita: aviso si se va con retraso y algo peligra, con «Reorganizar» */
+  async avisoRuta(info) {
+    if (!info) return;
+    if (!info.riesgos.length && info.ok) { if (info.retraso) UI.toast(info.retraso > 0 ? `Horarios actualizados: ${info.retraso} min más tarde` : `Horarios actualizados: vas ${-info.retraso} min adelantado`, 3500); return; }
+    const detalle = [...info.riesgos.map(r => `la cita de las ${r.hora} con ${r.nombre} está en riesgo`), !info.ok && !info.riesgos.length ? 'alguna visita ya no cabe en el horario' : null].filter(Boolean);
+    const texto = (info.retraso >= 10 ? `Vas con ${info.retraso} min de retraso` : 'Atención') + ': ' + detalle.join('; ') + '.';
+    if (await UI.confirm('Ruta con retraso', U.esc(texto) + ' Puedes reorganizar el resto de visitas.', { ok: 'Reorganizar', cancel: 'Seguir así' })) {
+      const r = await db.rutas.get(info.rutaId); if (r) { await APP.replanRuta(r); UI.toast('Ruta reorganizada'); }
+    }
+  },
   async nuevaRutaBase(fecha) {
     const a = APP.ajustes;
-    return { id: U.uuid(), fecha: fecha || U.today(), origen: a.origen, destino: a.origen, salida: a.salida, limite: a.limite, duracion: a.duracion, paradas: [], noCaben: [] };
+    return { id: U.uuid(), fecha: fecha || U.today(), origen: a.origen, destino: a.origen, salida: a.salida, limite: a.limite, duracion: a.duracion, tiempoCoche: a.tiempoCoche ?? 10, comida: a.comida || 'auto', paradas: [], noCaben: [] };
   },
   /* Añade un cliente a la ruta del día (creándola si no existe). Si ya estaba, aplica la hora fija y la duración elegidas. */
   async anadirARuta(clienteId, { horaFija = null, duracion = null, fecha = null } = {}) {
@@ -237,12 +343,14 @@ const APP = {
     await APP.replanRuta(ruta);
     return { ruta, yaEstaba: !!ex };
   },
-  /* Marca como hecha la parada del cliente en la ruta indicada (o en la de hoy si no se indica) */
+  /* Marca como hecha la parada del cliente en la ruta indicada (o en la de hoy si no se indica).
+     En la ruta de hoy, recalcula las horas del resto desde ahora (mismo orden) y devuelve el aviso para avisoRuta(). */
   async marcarParadaHecha(rutaId, clienteId) {
-    const r = rutaId ? await db.rutas.get(rutaId) : await DB.rutaDelDia(U.today()); if (!r || r.deleted) return;
-    const p = r.paradas.find(p => p.clienteId === clienteId); if (!p || p.hecho) return;
+    const r = rutaId ? await db.rutas.get(rutaId) : await DB.rutaDelDia(U.today()); if (!r || r.deleted) return null;
+    const p = r.paradas.find(p => p.clienteId === clienteId); if (!p || p.hecho) return null;
     p.hecho = true; p.noCabe = false; const n = new Date(); p.hechoA = n.getHours() * 60 + n.getMinutes();
-    await DB.save('rutas', r);
+    if (r.fecha !== U.today()) { await DB.save('rutas', r); return null; }
+    try { return await APP.recalcularHoras(r); } catch (e) { console.warn(e); await DB.save('rutas', r); return null; }
   },
   /* Elimina un cliente y lo quita de las rutas de hoy y futuras */
   async eliminarCliente(id) {
@@ -319,7 +427,22 @@ const APP = {
   /* ---------- datos de prueba ---------- */
   async cargarDemo() {
     const r = await fetch('data/demo-clientes.json'); const demo = await r.json();
-    const recs = demo.map(d => Object.assign({}, d, { geocodeStatus: 'ok', demo: true, horario: d.horario || null }));
+    // datos comerciales inventados (deterministas) para ver ventas, cadenas, prospectos e inactivos
+    let semilla = 7; const rnd = () => (semilla = (semilla * 16807) % 2147483647) / 2147483647;
+    const hoyM = new Date(), mesesDemo = [];
+    for (let y = 2025, m = 1; y < hoyM.getFullYear() || (y === hoyM.getFullYear() && m < hoyM.getMonth() + 1); m === 12 ? (m = 1, y++) : m++) mesesDemo.push(`${y}-${String(m).padStart(2, '0')}`);
+    const cadenas = ['ABACUS', 'LAIE', 'CASA DEL LLIBRE'];
+    const recs = demo.map((d, i) => {
+      const tipo = rnd(), base = tipo < 0.12 ? 0 : 80 + rnd() * 450;
+      const ventas = Object.fromEntries(mesesDemo.map(k => [k, base === 0 ? 0 : Math.round((base * (0.4 + rnd() * 1.2) - (rnd() < 0.06 ? base * 1.5 : 0)) * 100) / 100]));
+      const movil = i % 3 === 0 ? '6' + String(10000000 + Math.floor(rnd() * 89999999)) : '';
+      const prospecto = i % 17 === 5; // un prospecto todavía no ha comprado: sin ventas
+      return Object.assign({}, d, { geocodeStatus: 'ok', demo: true, horario: ROUTE.convertirHorario(d.horario || null, APP.ajustes.horario),
+        ventas: prospecto ? null : ventas, ventasImport: !prospecto, codAgrup: i % 11 === 0 ? cadenas[i % 3] : '', movil, whatsapp: true,
+        idioma: /Barcelon|Girona|Vic|Lleida/.test(d.localidad || '') && i % 2 ? 'ca' : 'es', prospecto });
+    });
+    const anio = VENTAS.anioReferencia(mesesDemo);
+    if (anio) { for (const c of recs) VENTAS.clasificar(c, anio, VENTAS.umbrales()); await APP.guardarAjustes({ clasificacionAnio: anio }); }
     await DB.bulkSave('clientes', recs);
     // algunas visitas y un pedido de ejemplo
     const vis = [];

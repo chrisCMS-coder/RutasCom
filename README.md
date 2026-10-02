@@ -4,12 +4,14 @@ Application mobile (PWA) de fiches clients et de tournées de visites commercial
 
 ## Ce que fait l'appli
 
-- **Hoy** : tournée du jour (prochaine visite, « Iniciar visita » ouvre Google Maps), commandes du jour, état du portefeuille.
-- **Clientes** : recherche, filtres par état (🔴 en retard, 🟡 bientôt, 🟢 à jour, 🔵 jamais visité), fiche client avec « lleva X días sin visita », notes, historique, horaires d'ouverture.
-- **Mapa** : tous les clients en couleur, « clientes cerca de mí » (10 km autour de toi).
-- **Rutas** : création d'une tournée (départ/arrivée, horaire, sélection par zone ou « Rellenar mi día »), rendez-vous à heure fixe, ordre optimisé en respectant les horaires d'ouverture, recalcul en cours de journée, partage WhatsApp.
-- **Pedidos** : saisie de commande depuis la fiche (catalogue importé depuis Excel), bouton « Enviar Excel » qui génère le fichier et ouvre le partage Android (WhatsApp, Gmail, Drive…).
-- **Ajustes** : import clients Excel (avec correspondance des colonnes et placement sur la carte), import catalogue, export, copie de sauvegarde (fichier) et copie en ligne automatique (Supabase, activée par défaut), code PIN, horaires par défaut, données de test.
+- **Hoy** : tournée du jour (prochaine visite, « Iniciar visita » ouvre Google Maps), tâches du jour, alerte « sans commande depuis 6 mois », commandes du jour, ventes de l'année vs l'an dernier à période égale, état du portefeuille.
+- **Clientes** : recherche, filtres par état (🔴 en retard, 🟡 bientôt, 🟢 à jour, 🔵 jamais visité), prospects, inactifs, « sin pedidos », zone (comarca automatique d'après le code postal, ou zones perso), chaîne. Fiche client : horaires du jour, téléphone / WhatsApp, tâches, notes, ventes (graphique 12 mois), historique des visites et de toutes les commandes.
+- **Mapa** : tous les clients en couleur (prospects en losange, inactifs en anneau), filtre par zone, couleur par zone, « clientes cerca de mí ».
+- **Rutas** : création d'une tournée (départ/arrivée, horaire, zone, « Rellenar mi día »), rendez-vous à heure fixe, ordre optimisé selon les horaires d'ouverture, **10 min jusqu'à la voiture** entre deux visites, **pause déjeuner** (journée continue si possible, ou 1 h au meilleur moment entre 13 h et 16 h), recalcul automatique des heures quand on valide une visite, message « Avisar » (WhatsApp/SMS pré-rempli, ES/CA) et « Avisar a todos ».
+- **Pedidos** : saisie depuis la fiche, « Validar pedido », lecture puis « Modificar », export Excel de la sélection ou d'une commande (partage WhatsApp, Gmail, Drive…).
+- **Tareas** : à faire avec date optionnelle et client, dictée, depuis la fiche ou la fenêtre « Registrar visita ».
+- **Ventas** : import des colonnes mensuelles de l'Excel, totaux annuels, comparaison à période égale, graphique, par chaîne, par zone ; taille (petit/moyen/grand) et inactifs recalculés une fois par an.
+- **Ajustes** : thème (auto/clair/sombre), import clients et catalogue, export, copie de sauvegarde et copie en ligne (Supabase), PIN, horaires par défaut, tournées, alertes, seuils de taille, textes des messages, zones, données de test.
 
 ## Mettre en ligne (une fois)
 
@@ -38,7 +40,7 @@ L'appli est un site statique : aucun serveur à gérer. Il faut juste l'héberge
 
 ## Fichiers Excel
 
-- **Clients** : une ligne par client, première ligne = titres des colonnes (nom, adresse, CP, localité, téléphone, contact, taille, fréquence, dernière visite, notes, code client). L'appli propose la correspondance automatiquement.
+- **Clients** : une ligne par client, première ligne = titres des colonnes (code client, nom, adresse, CP, localité, téléphone, portable, contact, CodAgrup, fréquence, dernière visite, notes). L'appli propose la correspondance automatiquement. Les **colonnes de mois** (« 01/2025 », « ene 2025 », « 2025-01 »…) sont reconnues seules comme ventes mensuelles. Un réimport **complète** : il ajoute les nouveaux mois, corrige les mois déjà connus et remplit les champs vides, sans toucher à ce qui a été saisi dans l'appli.
 - **Catalogue** : référence/ISBN, titre, auteur, éditeur, prix.
 - **Export commandes** : feuille « Líneas » (une ligne par article : date, client, code client, adresse, référence, titre, quantité, prix, montant) et feuille « Resumen » (une ligne par commande).
 

@@ -1,6 +1,6 @@
 # Brief — prochaines évolutions de Rutas Comerciales
 
-*Rédigé le 1er octobre 2026. Rien n'est encore codé : ce document fixe ce qui a été décidé avant de commencer.*
+*Rédigé le 1er octobre 2026. **Codé le 2 octobre 2026 (version 1.5.0)** sur la branche de travail, pas encore publié : voir « Décisions prises au codage » à la fin.*
 
 ## Ordre de réalisation
 0. **Mode sombre** : à faire en premier, pour que tous les écrans suivants soient construits directement avec le thème.
@@ -250,12 +250,12 @@ L'ERP n'est pas connectable : tout passe par l'import Excel, réimportable quand
 - **Supabase : aucun changement de table.** Les fiches (et la future table des tâches) sont copiées en JSON telles quelles ; les nouveaux champs suivent automatiquement.
 - À chaque mise en ligne, changer `VERSION` dans `sw.js` pour que les téléphones prennent la nouvelle version.
 
-## Points encore ouverts
-1. **En-têtes de colonnes de l'Excel** (code client, ventes mensuelles, CodAgrup) : nécessaires pour la partie 3 (ventes).
-2. **Numéros de téléphone :** un champ « Móvil » distinct du fixe, avec « Tiene WhatsApp » (proposé en 1.5) ?
-3. **Inactif qui recommence à acheter en cours d'année :** il redevient actif tout de suite, comme un prospect (proposé), ou il attend le recalcul de janvier ?
-4. **Recalcul annuel :** déclenché au premier import contenant décembre (proposé en 3.3) ?
-5. **Alerte 6 mois :** délai réglable dans Ajustes (proposé) ?
-6. **Tâches :** « Mañana » présélectionné quand la tâche est créée depuis une fiche ou après une visite (proposé) ?
-7. **Temps jusqu'à la voiture :** pas compté au départ de la maison ni au retour final (proposé) ?
-8. **Pause déjeuner :** horaire fixe (ex. 13:30–15:00, proposé) ou souple (« 1 h entre 13:00 et 15:00 », placée au meilleur moment par l'appli) ?
+## Décisions prises au codage (2 octobre 2026)
+1. **En-têtes de l'Excel** : pas encore reçus. L'import reconnaît seul les colonnes de mois (« 01/2025 », « 1-2025 », « 2025-01 », « 202501 », « Ene 2025 », « enero-25 », « gen. 2025 »…) et propose « Cadena (CodAgrup) », « Móvil » et « Total ventas » dans la correspondance des colonnes. À vérifier avec le vrai fichier.
+2. **Numéros** : champ « Móvil » distinct du fixe + interrupteur « Tiene WhatsApp ». Sans « Móvil », un « Teléfono » qui commence par 6 ou 7 sert de portable.
+3. **Inactif qui recommence à acheter** : il redevient actif dès l'import qui montre une vente après l'année de classement.
+4. **Recalcul annuel** : au premier import qui contient décembre de l'année écoulée (message « Clasificación AAAA actualizada »). Changer les seuils dans Ajustes reclasse tout de suite avec la même année.
+5. **Alerte 6 mois** : délai réglable dans Ajustes (3, 4, 6, 9 ou 12 mois).
+6. **Tâches** : « Mañana » présélectionné depuis une fiche ou après une visite ; « Hoy » depuis la liste.
+7. **Temps jusqu'à la voiture** : 10 min par défaut entre deux visites, **pas** au départ de la maison ni au retour final (sauf en repartant d'un client lors d'un recalcul) ; réglable dans Ajustes et par tournée (0, 5, 10, 15 min).
+8. **Pause déjeuner** : par défaut « journée continue si possible » — s'il y a des clients ouverts à midi on continue (retour plus tôt) ; s'il y a un trou d'au moins 45 min entre 13 h et 16 h, c'est la pause, affichée dans la frise. Option « 1 h, au meilleur moment » (toujours une heure entre 13 h et 16 h) et « sans pause ».

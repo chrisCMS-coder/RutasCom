@@ -1,8 +1,19 @@
 /* Planificador de rutas: orden de visitas con citas a hora fija y horarios de apertura.
    Heurística: inserción voraz entre citas (anclas) + mejora 2-opt por tramos. */
 const ROUTE = {
-  /* Ventanas de apertura (minutos) de un cliente para un día (0=domingo..6=sábado) */
+  DIAS: ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'],
+  /* Horario del cliente (tres modos):
+     { modo: 'habitual' }                                         → el de Ajustes
+     { modo: 'igual', m: ['09:30','13:30'], t: ['17:00','20:00'] | null, cerrados: [0, ...] }  (0 = domingo)
+     { modo: 'dia', dias: [ { abierto, m, t } x7 ] }              → índice 0 = domingo
+     Sin «modo» = formato antiguo (interruptores lunesCerrado, cierraSabado…), que se sigue entendiendo. */
   ventanas(horario, defecto, dow) {
+    const franjas = (m, t) => [m, t].filter(f => f && f[0] && f[1]).map(f => [U.parseTime(f[0]), U.parseTime(f[1])]).filter(w => w[1] > w[0]);
+    if (horario && horario.modo === 'igual') return (horario.cerrados || []).includes(dow) ? [] : franjas(horario.m, horario.t);
+    if (horario && horario.modo === 'dia') { const d = (horario.dias || [])[dow]; return d && d.abierto ? franjas(d.m, d.t) : []; }
+    return ROUTE._ventanasAntiguas(horario && horario.modo === 'habitual' ? null : horario, defecto, dow);
+  },
+  _ventanasAntiguas(horario, defecto, dow) {
     const h = Object.assign({}, defecto || {}, horario || {});
     const abre = U.parseTime(h.abre || '09:30'), cierra = U.parseTime(h.cierra || '20:00');
     const mdDe = U.parseTime(h.mediodiaDe || '13:30'), mdA = U.parseTime(h.mediodiaA || '17:00');
@@ -16,6 +27,21 @@ const ROUTE = {
     if (h.lunesTodoCerrado && dow === 1) return [];
     return v;
   },
+  /* Pasa un horario antiguo (o ninguno) al modelo nuevo con las franjas reales de cada día */
+  convertirHorario(horario, defecto) {
+    if (!horario) return { modo: 'habitual' };
+    if (horario.modo) return horario;
+    const aT = w => w ? [U.fmtTime(w[0]), U.fmtTime(w[1])] : null;
+    const dias = [0, 1, 2, 3, 4, 5, 6].map(d => { const v = ROUTE._ventanasAntiguas(horario, defecto, d); return v.length ? { abierto: true, m: aT(v[0]), t: aT(v[1]) } : { abierto: false, m: null, t: null }; });
+    const abiertos = dias.filter(d => d.abierto), clave = d => JSON.stringify([d.m, d.t]);
+    if (abiertos.length && abiertos.every(d => clave(d) === clave(abiertos[0]))) return { modo: 'igual', m: abiertos[0].m, t: abiertos[0].t, cerrados: dias.map((d, i) => (d.abierto ? null : i)).filter(i => i != null) };
+    return { modo: 'dia', dias };
+  },
+  /* «9:30–14:00 · 16:30–20:00» o «Cerrado» */
+  textoHorario(horario, defecto, dow) {
+    const v = ROUTE.ventanas(horario, defecto, dow);
+    return v.length ? v.map(w => `${U.fmtTime(w[0])}–${U.fmtTime(w[1])}`).join(' · ') : 'Cerrado';
+  },
   /* Próximo instante >= t en que se puede empezar una visita de `dur` minutos sin pasarse del cierre
      (o null si ya no abre hoy). ventanas null = sin horario (siempre abierto); [] = cerrado ese día. */
   proximaApertura(ventanas, t, dur = 0) {
@@ -27,7 +53,9 @@ const ROUTE = {
     return null;
   },
 
-  /* Planifica. stops: [{id, lat, lng, horaFija (min|null), duracion (min), ventanas}]
+  /* Planifica. stops: [{id, lat, lng, horaFija (min|null), duracion (min), ventanas, sinLugar}]
+     sinLugar: parada sin dirección (la pausa para comer): no hay trayecto hasta ella y se sigue desde donde se estaba.
+     penaliza: minutos de coste añadido al elegirla (la pausa se deja para cuando no hay nada mejor que hacer).
      opts: {salida (min), limite (min), dur, dist (matrices con índice 0=origen, 1..n=stops, n+1=destino)} */
   planificar(stops, opts) {
     const n = stops.length;
@@ -42,8 +70,8 @@ const ROUTE = {
       let ok = true;
       for (const i of orden) {
         const s = stops[i];
-        const viaje = dur[cur][idx(i)];
-        km += dist[cur][idx(i)]; cond += viaje;
+        const viaje = s.sinLugar ? 0 : dur[cur][idx(i)];
+        if (!s.sinLugar) km += dist[cur][idx(i)]; cond += viaje;
         let lleg = t + viaje;
         let ini = lleg;
         if (s.horaFija != null) { if (lleg > s.horaFija + 10) ok = false; ini = Math.max(lleg, s.horaFija); }
@@ -54,7 +82,7 @@ const ROUTE = {
         espera += ini - lleg;
         const fin = ini + (s.duracion || 30);
         plan.push({ i, llegada: lleg, inicio: ini, fin, viaje });
-        t = fin; cur = idx(i);
+        t = fin; if (!s.sinLugar) cur = idx(i);
       }
       const vuelta = dur[cur][DEST]; km += dist[cur][DEST]; cond += vuelta;
       const llegadaFin = t + vuelta;
@@ -75,22 +103,22 @@ const ROUTE = {
         // candidatos: primero los que no obligan a esperar mucho; si no hay, se acepta esperar (p. ej. a que abran por la tarde)
         let mejor = null, mejorCoste = Infinity, mejorEspera = null, costeEspera = Infinity;
         for (const i of libres) {
-          const s = stops[i];
-          const lleg = t + dur[cur][idx(i)];
+          const s = stops[i], desde = s.sinLugar ? cur : idx(i);
+          const lleg = t + (s.sinLugar ? 0 : dur[cur][idx(i)]);
           const ini = ROUTE.proximaApertura(s.ventanas, lleg, s.duracion || 30);
           if (ini == null) continue;
           const fin = ini + (s.duracion || 30);
           const sig = anc == null ? DEST : idx(anc);
-          const llegAnc = fin + dur[idx(i)][sig];
+          const llegAnc = fin + dur[desde][sig];
           const tope = anc == null ? limite : stops[anc].horaFija + 5;
           if (llegAnc > tope) continue;
-          const coste = (ini - t) + (anc != null ? dur[idx(i)][sig] * 0.3 : 0);
+          const coste = (ini - t) + (anc != null ? dur[desde][sig] * 0.3 : 0) + (s.penaliza || 0);
           if (ini - lleg <= 60) { if (coste < mejorCoste) { mejorCoste = coste; mejor = { i, fin }; } }
           else if (coste < costeEspera) { costeEspera = coste; mejorEspera = { i, fin }; }
         }
         if (!mejor) mejor = mejorEspera;
         if (!mejor) break;
-        orden.push(mejor.i); libres = libres.filter(x => x !== mejor.i); t = mejor.fin; cur = idx(mejor.i);
+        orden.push(mejor.i); libres = libres.filter(x => x !== mejor.i); t = mejor.fin; if (!stops[mejor.i].sinLugar) cur = idx(mejor.i);
       }
       if (anc != null) {
         const s = stops[anc];
@@ -135,15 +163,15 @@ const ROUTE = {
     let t = salida, cur = 0, km = 0, cond = 0, espera = 0, ok = true;
     const plan = [];
     for (const i of orden) {
-      const s = stops[i]; const viaje = dur[cur][idx(i)];
-      km += dist[cur][idx(i)]; cond += viaje;
+      const s = stops[i]; const viaje = s.sinLugar ? 0 : dur[cur][idx(i)];
+      if (!s.sinLugar) km += dist[cur][idx(i)]; cond += viaje;
       const lleg = t + viaje; let ini = lleg;
       if (s.horaFija != null) { if (lleg > s.horaFija + 10) ok = false; ini = Math.max(lleg, s.horaFija); }
       else { const ap = ROUTE.proximaApertura(s.ventanas, lleg, s.duracion || 30); if (ap == null) ok = false; else ini = ap; }
       espera += ini - lleg;
       const fin = ini + (s.duracion || 30);
       plan.push({ i, llegada: lleg, inicio: ini, fin, viaje });
-      t = fin; cur = idx(i);
+      t = fin; if (!s.sinLugar) cur = idx(i);
     }
     const vuelta = dur[cur][DEST]; km += dist[cur][DEST]; cond += vuelta;
     const fin = t + vuelta; if (fin > limite) ok = false;
